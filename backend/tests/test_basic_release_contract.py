@@ -759,10 +759,15 @@ def test_physical_inventory_covers_ignored_config_and_wal_bytes(
     ):
         path.write_bytes(payload)
         path.chmod(0o600)
-    subprocess.run(
-        ["/usr/bin/xattr", "-cr", str(pgdata)],
-        check=True,
-    )
+    # macOS can attach quarantine/provenance metadata to temporary fixtures;
+    # Linux runners do not ship the macOS xattr executable and do not need
+    # this cleanup.
+    xattr_tool = Path("/usr/bin/xattr")
+    if xattr_tool.is_file():
+        subprocess.run(
+            [str(xattr_tool), "-cr", str(pgdata)],
+            check=True,
+        )
 
     inventory = directory / "physical.inventory.json"
     created = create_physical_backup_inventory(

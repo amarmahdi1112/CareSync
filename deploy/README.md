@@ -141,13 +141,17 @@ expects:
 
 | GitHub setting | Kind | Value |
 | --- | --- | --- |
-| `PROD_HOST` | environment variable | `134.209.124.182` |
-| `PROD_USER` | environment variable | `caresync-deploy` |
-| `PRODUCTION_ORIGIN` | environment variable | `https://caresync-app.com` |
+| `PRODUCTION_ORIGIN` | repository variable | `https://caresync-app.com` |
+| `PROD_HOST` | production-environment variable | `134.209.124.182` |
+| `PROD_USER` | production-environment variable | `caresync-deploy` |
 | `PROD_SSH_PRIVATE_KEY` | environment secret | dedicated deploy private key |
 | `PROD_KNOWN_HOSTS` | environment secret | pinned host-key line from a trusted channel |
 
 SSH port 22 is deliberately fixed in the workflow and firewall.
+`PRODUCTION_ORIGIN` must be repository-scoped because pull-request and `main`
+verification build the frontend before the deploy job enters the protected
+`production` Environment. The host/user variables and both SSH secrets remain
+scoped to that Environment.
 Do not use `ssh-keyscan` as trust-on-first-use inside every run. Pin the host
 key once after verifying its fingerprint through the provider console.
 Repository/fork pull requests must never receive deployment secrets or invoke
