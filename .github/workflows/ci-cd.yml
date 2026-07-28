@@ -22,9 +22,34 @@ jobs:
   verify-and-package:
     name: Verify and package
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       PRODUCTION_ORIGIN: ${{ vars.PRODUCTION_ORIGIN }}
+    services:
+      postgres-runtime:
+        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "55435:5432"
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      postgres-disposable:
+        image: postgres:17.10-bookworm@sha256:4f736ae292687621d4dbe0d499ffd024a36bd2ee7d8ca6f2ccd4c800f047b394
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "55436:5432"
+          - "56554:5432"
+          - "56555:5432"
+        options: >-
+          --health-cmd "pg_isready --username=postgres --dbname=postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Check out the requested revision
@@ -75,6 +100,52 @@ jobs:
         working-directory: backend
         run: uv sync --locked --all-groups
 
+      - name: Install the pinned PostgreSQL 17 client
+        run: |
+          readonly key_path="${RUNNER_TEMP}/postgresql-pgdg.asc"
+          readonly keyring_path="${RUNNER_TEMP}/postgresql-pgdg.gpg"
+          curl \
+            --fail \
+            --location \
+            --proto '=https' \
+            --retry 5 \
+            --retry-all-errors \
+            --show-error \
+            --silent \
+            --tlsv1.2 \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            --output "${key_path}"
+          printf '%s  %s\n' \
+            '0144068502a1eddd2a0280ede10ef607d1ec592ce819940991203941564e8e76' \
+            "${key_path}" \
+            | sha256sum --check --strict
+          gpg --batch --dearmor < "${key_path}" > "${keyring_path}"
+          sudo install \
+            -D \
+            -m 0644 \
+            "${keyring_path}" \
+            /usr/share/keyrings/postgresql-pgdg.gpg
+          printf '%s\n' \
+            'deb [signed-by=/usr/share/keyrings/postgresql-pgdg.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main' \
+            | sudo tee /etc/apt/sources.list.d/postgresql-pgdg.list >/dev/null
+          sudo apt-get update --quiet
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install \
+            --assume-yes \
+            --no-install-recommends \
+            postgresql-client-17=17.10-1.pgdg24.04+1
+          /usr/lib/postgresql/17/bin/psql --version \
+            | grep -Eq '^psql \(PostgreSQL\) 17\.10 '
+
+          # One frozen 0042 proof predates the portable CARESYNC_POSTGRES_BIN
+          # override. Supply its reviewed path without weakening that proof.
+          sudo install -d -m 0755 /opt/homebrew/opt/postgresql@17/bin
+          sudo ln -s \
+            /usr/lib/postgresql/17/bin/pg_dump \
+            /opt/homebrew/opt/postgresql@17/bin/pg_dump
+          sudo ln -s \
+            /usr/lib/postgresql/17/bin/pg_restore \
+            /opt/homebrew/opt/postgresql@17/bin/pg_restore
+
       - name: Lint the backend
         working-directory: backend
         run: uv run ruff check .
@@ -82,6 +153,174 @@ jobs:
       - name: Test the backend
         working-directory: backend
         run: uv run pytest
+
+      - name: Certify the PostgreSQL 17 production path
+        working-directory: backend
+        env:
+          BASIC_POSTGRES_TEST_HOST: 127.0.0.1
+          CARESYNC_POSTGRES_BIN: /usr/lib/postgresql/17/bin
+          CARESYNC_PSQL: /usr/lib/postgresql/17/bin/psql
+        run: |
+          readonly runtime_port=55435
+          readonly disposable_port=55436
+          readonly postgres_admin_url="postgresql+psycopg://postgres@127.0.0.1:${disposable_port}/postgres"
+          readonly admissions_admin_url="postgresql+psycopg://postgres@127.0.0.1:56554/postgres"
+          readonly room_safety_admin_url="postgresql+psycopg://postgres@127.0.0.1:56555/postgres"
+          readonly psql=/usr/lib/postgresql/17/bin/psql
+          readonly createdb=/usr/lib/postgresql/17/bin/createdb
+          readonly dropdb=/usr/lib/postgresql/17/bin/dropdb
+
+          for port in "${runtime_port}" "${disposable_port}"; do
+            /usr/lib/postgresql/17/bin/pg_isready \
+              --host=127.0.0.1 \
+              --port="${port}" \
+              --username=postgres \
+              --dbname=postgres
+            server_major="$(
+              "${psql}" \
+                --no-psqlrc \
+                --tuples-only \
+                --no-align \
+                --host=127.0.0.1 \
+                --port="${port}" \
+                --username=postgres \
+                --dbname=postgres \
+                --command="SELECT current_setting('server_version_num')::integer / 10000"
+            )"
+            [[ "${server_major}" == "17" ]] || {
+              printf '::error::PostgreSQL service on port %s is not major version 17\n' \
+                "${port}" >&2
+              exit 1
+            }
+          done
+
+          # These proofs each create and remove their own database and roles on
+          # the otherwise-empty disposable cluster.
+          BASIC_POSTGRES_BILLING_SCOPE_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_BILLING_POLICY_0042_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_ADMISSIONS_TEST_URL="${admissions_admin_url}" \
+          BASIC_POSTGRES_BILLING_LEDGER_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_DRIVER_REGISTRY_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_ROOM_SAFETY_0041_TEST_URL="${room_safety_admin_url}" \
+          BASIC_POSTGRES_TRANSPORT_COMMANDS_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_PUBLIC_JOB_OUTBOX_TEST_URL="${postgres_admin_url}" \
+            uv run pytest \
+              tests/test_basic_billing_agreement_scope_migration.py::test_postgres_fresh_chain_reproduces_0036_then_applies_0037_scope \
+              tests/test_basic_billing_policy_recertification_migration.py::test_postgres_17_recertification_tamper_downgrade_and_dump_restore \
+              tests/test_basic_postgres_admissions_decision_spine.py \
+              tests/test_basic_postgres_billing_ledger.py \
+              tests/test_basic_postgres_driver_vehicle_registry.py \
+              tests/test_basic_postgres_room_safety_0041.py \
+              tests/test_basic_postgres_transport_registry_commands.py \
+              tests/test_basic_postgres_transport_downstream_attestation.py \
+              tests/test_basic_public_job_catalog_outbox.py::test_postgres_outbox_is_globally_readable_but_runtime_immutable \
+              tests/test_basic_public_job_catalog_outbox.py::test_postgres_restricted_owner_backfill_and_runtime_trigger_behavior
+
+          # This migration test deliberately requires that no caresync database
+          # exist on its isolated cluster before it begins.
+          BASIC_POSTGRES_MIGRATION_TEST_PORT="${disposable_port}" \
+            uv run pytest \
+              tests/test_basic_postgres_childcare_command_spine_migration_gate.py
+
+          # Build the same owner/runtime-role topology used by production.
+          "${psql}" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --host=127.0.0.1 \
+            --port="${runtime_port}" \
+            --username=postgres \
+            --dbname=postgres <<'SQL'
+          DROP DATABASE IF EXISTS caresync;
+          DROP ROLE IF EXISTS migration_owner;
+          CREATE ROLE migration_owner
+            LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+            NOREPLICATION BYPASSRLS;
+          CREATE DATABASE caresync OWNER migration_owner;
+          SQL
+          "${psql}" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --host=127.0.0.1 \
+            --port="${runtime_port}" \
+            --username=postgres \
+            --dbname=caresync \
+            --command='ALTER SCHEMA public OWNER TO migration_owner'
+
+          ENVIRONMENT=test \
+          DATABASE_TYPE=postgres \
+          DATABASE_HOST=127.0.0.1 \
+          DATABASE_PORT="${runtime_port}" \
+          DATABASE_USER=migration_owner \
+          DATABASE_PASSWORD='' \
+          DATABASE_NAME=caresync \
+          DATABASE_SSL=false \
+          DATABASE_READ_ONLY=false \
+            uv run alembic upgrade head
+          ENVIRONMENT=test \
+          DATABASE_TYPE=postgres \
+          DATABASE_HOST=127.0.0.1 \
+          DATABASE_PORT="${runtime_port}" \
+          DATABASE_USER=migration_owner \
+          DATABASE_PASSWORD='' \
+          DATABASE_NAME=caresync \
+          DATABASE_SSL=false \
+          DATABASE_READ_ONLY=false \
+            uv run alembic check
+          "${psql}" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --host=127.0.0.1 \
+            --port="${runtime_port}" \
+            --username=postgres \
+            --dbname=caresync \
+            --file=scripts/bootstrap_basic_runtime_role.sql
+
+          BASIC_POSTGRES_TEST_PORT="${runtime_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+          BASIC_POSTGRES_TEST_ADMIN_USER=postgres \
+          BASIC_POSTGRES_TEST_MIGRATION_USER=migration_owner \
+            uv run pytest \
+              tests/test_basic_postgres_care_attendance_concurrency.py \
+              tests/test_basic_postgres_childcare_command_spine.py \
+              tests/test_basic_postgres_enrollment_attendance_concurrency.py \
+              tests/test_basic_postgres_family_authority_activation.py \
+              tests/test_basic_postgres_family_authority_api.py \
+              tests/test_basic_postgres_family_authority_kernel.py \
+              tests/test_basic_postgres_family_evidence_vault.py \
+              tests/test_basic_postgres_family_release_context.py \
+              tests/test_basic_postgres_push_rls.py \
+              tests/test_basic_postgres_regulated_care_concurrency.py \
+              tests/test_basic_postgres_release_checkout_writer.py \
+              tests/test_basic_postgres_rls.py \
+              tests/test_basic_postgres_room_deactivation_attendance_concurrency.py \
+              tests/test_basic_postgres_room_placement_concurrency.py \
+              tests/test_basic_postgres_runtime_role_hardening.py \
+              tests/test_basic_postgres_staff_exchange.py \
+              tests/test_basic_postgres_staff_rota.py \
+              tests/test_basic_postgres_staff_screening_pathways.py \
+              tests/test_basic_postgres_staff_screening_provisioning.py \
+              tests/test_basic_postgres_staff_workforce.py
+
+          # Finish with an exact FORCE-RLS logical backup/restore proof using
+          # two independent PostgreSQL 17 clusters.
+          for port in "${runtime_port}" "${disposable_port}"; do
+            "${dropdb}" \
+              --if-exists \
+              --force \
+              --host=127.0.0.1 \
+              --port="${port}" \
+              --username=postgres \
+              caresync
+            "${createdb}" \
+              --host=127.0.0.1 \
+              --port="${port}" \
+              --username=postgres \
+              --owner=postgres \
+              caresync
+          done
+          BASIC_POSTGRES_BACKUP_SOURCE_PORT="${runtime_port}" \
+          BASIC_POSTGRES_BACKUP_TARGET_PORT="${disposable_port}" \
+            uv run pytest tests/test_backup_restore_postgres.py
 
       - name: Set up Node.js 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -203,6 +442,46 @@ jobs:
             printf '::error::PROD_KNOWN_HOSTS does not pin PROD_HOST\n' >&2
             exit 1
           }
+
+      - name: Refuse a stale production revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          readonly response="${RUNNER_TEMP}/main-tip.json"
+          curl \
+            --fail-with-body \
+            --location \
+            --proto '=https' \
+            --retry 5 \
+            --retry-all-errors \
+            --show-error \
+            --silent \
+            --tlsv1.2 \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/heads/main" \
+            --output "${response}"
+          current_main="$(
+            python3 - "${response}" <<'PY'
+          import json
+          import re
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as source:
+              payload = json.load(source)
+          value = (payload.get("object") or {}).get("sha")
+          if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+              raise SystemExit("GitHub did not return a valid main branch tip")
+          print(value)
+          PY
+          )"
+          if [[ "${current_main}" != "${GITHUB_SHA}" ]]; then
+            printf '%s\n' \
+              "::error::Refusing stale production revision ${GITHUB_SHA}; current main is ${current_main}" \
+              >&2
+            exit 1
+          fi
 
       - name: Stream the release to the forced deploy command
         run: |

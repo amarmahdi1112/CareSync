@@ -60,6 +60,9 @@ server {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
         add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     }
 
     # Never cache the SPA shell. A rollback or deployment must be observed on
@@ -69,6 +72,10 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     }
 
     location / {
@@ -76,5 +83,9 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     }
 }

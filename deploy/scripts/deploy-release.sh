@@ -38,7 +38,8 @@ release_path="$releases_root/$release_sha"
 previous_target=""
 backup_path=""
 migration_started=0
-service_was_active=0
+api_was_active=0
+push_was_active=0
 
 cleanup() {
   rm -rf -- "$work_root"
@@ -47,8 +48,9 @@ cleanup() {
 restore_database() {
   local dump_path="$1"
   systemctl stop "$service_name" "$push_service_name" 2>/dev/null || true
-  runuser -u postgres -- dropdb --if-exists --force caresync
-  runuser -u postgres -- createdb --template=template0 --encoding=UTF8 caresync
+  runuser -u postgres -- dropdb --if-exists --force caresync || return 1
+  runuser -u postgres -- createdb --template=template0 --encoding=UTF8 caresync ||
+    return 1
   runuser -u postgres -- pg_restore \
     --exit-on-error \
     --no-owner \
@@ -59,8 +61,9 @@ restore_database() {
 
 bind_runtime_passwords() {
   local app_password transport_password
-  app_password="$(tr -d '\n' < "$secret_root/app-db-password")"
-  transport_password="$(tr -d '\n' < "$secret_root/transport-db-password")"
+  app_password="$(tr -d '\n' < "$secret_root/app-db-password")" || return 1
+  transport_password="$(tr -d '\n' < "$secret_root/transport-db-password")" ||
+    return 1
   if [[ ! "$app_password" =~ ^[0-9a-f]{64}$ ]] ||
      [[ ! "$transport_password" =~ ^[0-9a-f]{64}$ ]] ||
      [[ "$app_password" == "$transport_password" ]]; then
@@ -78,38 +81,86 @@ bind_runtime_passwords() {
       >/dev/null
 }
 
+certify_local_health() {
+  local attempt
+  for attempt in $(seq 1 60); do
+    if curl -fsS --max-time 3 http://127.0.0.1:8001/api/v1/health |
+        python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+database = value.get("database") or {}
+raise SystemExit(
+    0 if value.get("status") == "ok"
+    and database.get("connected") is True
+    and database.get("database_name") == "caresync"
+    else 1
+)
+'; then
+      return 0
+    fi
+    sleep 2 || return 1
+  done
+  return 1
+}
+
 recover_failed_deployment() {
   local exit_status=$?
+  local recovery_failed=0
+  # ERR is inherited by command substitutions and pipeline subshells under
+  # `set -E`. Let the parent shell perform recovery exactly once.
+  if (( BASH_SUBSHELL > 0 )); then
+    return "$exit_status"
+  fi
   trap - ERR
   set +e
-  echo "CareSync deployment failed; restoring the pre-deploy release." >&2
-  systemctl stop "$service_name" "$push_service_name" 2>/dev/null
-  if [[ "$migration_started" -eq 1 && -n "$backup_path" &&
-        -s "$backup_path/database.dump" ]]; then
-    restore_database "$backup_path/database.dump"
-    if [[ -n "$previous_target" &&
-          -f "$previous_target/backend/scripts/bootstrap_basic_runtime_role.sql" ]]; then
-      runuser -u postgres -- psql \
-        --no-psqlrc \
-        --set=ON_ERROR_STOP=1 \
-        --dbname=caresync \
-        --file="$previous_target/backend/scripts/bootstrap_basic_runtime_role.sql" \
-        >/dev/null
-      bind_runtime_passwords
+  echo "CareSync deployment failed; attempting certified recovery." >&2
+  systemctl stop "$push_service_name" "$service_name" 2>/dev/null || true
+  if systemctl is-active --quiet "$service_name" ||
+     systemctl is-active --quiet "$push_service_name"; then
+    recovery_failed=1
+  fi
+  if [[ "$migration_started" -eq 1 && "$recovery_failed" -eq 0 ]]; then
+    if [[ -z "$backup_path" || ! -s "$backup_path/database.dump" ]] ||
+       ! restore_database "$backup_path/database.dump"; then
+      recovery_failed=1
+    elif [[ -n "$previous_target" &&
+            -f "$previous_target/backend/scripts/bootstrap_basic_runtime_role.sql" ]]; then
+      if ! runuser -u postgres -- psql \
+          --no-psqlrc \
+          --set=ON_ERROR_STOP=1 \
+          --dbname=caresync \
+          --file="$previous_target/backend/scripts/bootstrap_basic_runtime_role.sql" \
+          >/dev/null ||
+         ! bind_runtime_passwords; then
+        recovery_failed=1
+      fi
     fi
   fi
   if [[ -n "$previous_target" && -d "$previous_target" ]]; then
-    ln -sfn "$previous_target" "$current_link.rollback"
-    mv -Tf "$current_link.rollback" "$current_link"
-    systemctl start "$service_name"
-    if [[ "$service_was_active" -eq 1 ]] &&
-       systemctl is-enabled --quiet "$push_service_name" 2>/dev/null; then
-      systemctl start "$push_service_name"
+    if ! ln -sfn "$previous_target" "$current_link.rollback" ||
+       ! mv -Tf "$current_link.rollback" "$current_link" ||
+       ! systemctl daemon-reload; then
+      recovery_failed=1
     fi
-  else
-    rm -f -- "$current_link"
+    if [[ "$api_was_active" -eq 1 && "$recovery_failed" -eq 0 ]]; then
+      if ! systemctl start "$service_name" || ! certify_local_health; then
+        recovery_failed=1
+      fi
+    fi
+    if [[ "$push_was_active" -eq 1 && "$recovery_failed" -eq 0 ]] &&
+       ! systemctl start "$push_service_name"; then
+      recovery_failed=1
+    fi
+  elif ! rm -f -- "$current_link"; then
+    recovery_failed=1
   fi
   cleanup
+  if [[ "$recovery_failed" -ne 0 ]]; then
+    echo "FATAL: CareSync automatic recovery could not certify the prior state; the API remains stopped for operator recovery." >&2
+    systemctl stop "$push_service_name" "$service_name" 2>/dev/null || true
+    exit 71
+  fi
+  echo "CareSync pre-deployment state was restored and certified." >&2
   exit "$exit_status"
 }
 
@@ -151,18 +202,33 @@ if [[ "$manifest_origin" != "$configured_origin" ]]; then
 fi
 
 if [[ -e "$release_path" ]]; then
-  installed_sha="$(
-    python3 - "$release_path/release-manifest.json" <<'PY'
+  active_target="$(readlink -f "$current_link" 2>/dev/null || true)"
+  if [[ "$active_target" == "$release_path" ]]; then
+    installed_sha="$(
+      python3 - "$release_path/release-manifest.json" <<'PY'
 import json
 import sys
 print(json.load(open(sys.argv[1], encoding="utf-8")).get("git_sha", ""))
 PY
-  )"
-  if [[ "$installed_sha" != "$release_sha" ]]; then
-    echo "An incompatible release already owns this SHA." >&2
-    exit 65
+    )"
+    if [[ "$installed_sha" != "$release_sha" ]]; then
+      echo "An incompatible release already owns this SHA." >&2
+      exit 65
+    fi
+    rm -rf -- "$stage_path"
+    if ! certify_local_health; then
+      echo "The requested release is already active but is not healthy." >&2
+      exit 70
+    fi
+    echo "CareSync release $release_sha is already active and healthy."
+    exit 0
+  else
+    # A failed pre-activation attempt may have left a partial directory. It is
+    # not trusted merely because its name is a commit SHA; rebuild it from the
+    # newly verified archive.
+    rm -rf -- "$release_path"
+    mv -- "$stage_path" "$release_path"
   fi
-  rm -rf -- "$stage_path"
 else
   mv -- "$stage_path" "$release_path"
 fi
@@ -224,7 +290,10 @@ if [[ -L "$current_link" ]]; then
   previous_target="$(readlink -f "$current_link")"
 fi
 if systemctl is-active --quiet "$service_name"; then
-  service_was_active=1
+  api_was_active=1
+fi
+if systemctl is-active --quiet "$push_service_name"; then
+  push_was_active=1
 fi
 # Only failures from this point forward need service/database recovery. Archive,
 # dependency, and release-shape failures above must never disturb the active
@@ -297,26 +366,7 @@ mv -Tf "$current_link.next" "$current_link"
 systemctl daemon-reload
 systemctl restart "$service_name"
 
-health_ok=0
-for _ in $(seq 1 60); do
-  if curl -fsS --max-time 3 http://127.0.0.1:8001/api/v1/health |
-      python3 -c '
-import json, sys
-value = json.load(sys.stdin)
-database = value.get("database") or {}
-raise SystemExit(
-    0 if value.get("status") == "ok"
-    and database.get("connected") is True
-    and database.get("database_name") == "caresync"
-    else 1
-)
-'; then
-    health_ok=1
-    break
-  fi
-  sleep 2
-done
-if [[ "$health_ok" -ne 1 ]]; then
+if ! certify_local_health; then
   journalctl -u "$service_name" --no-pager -n 40 >&2 || true
   echo "CareSync failed its post-deploy health gate." >&2
   exit 70
@@ -333,7 +383,10 @@ find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' |
   sort -nr |
   awk 'NR > 5 {sub(/^[^ ]+ /, ""); print}' |
   while IFS= read -r old_release; do
-    [[ "$old_release" == "$previous_target" ]] || rm -rf -- "$old_release"
+    if [[ "$old_release" != "$release_path" &&
+          "$old_release" != "$previous_target" ]]; then
+      rm -rf -- "$old_release"
+    fi
   done
 find "$backup_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' |
   sort -nr |
