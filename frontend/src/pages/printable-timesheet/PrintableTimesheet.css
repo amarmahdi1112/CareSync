@@ -1,0 +1,274 @@
+/* Printable Timesheet - Paper Style */
+
+.printable-timesheet {
+    width: 100%;
+    min-height: 100vh;
+    background-color: #f0f0f0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    box-sizing: border-box;
+}
+
+.timesheet-paper {
+    width: 100%;
+    max-width: 1000px;
+    background: #ffffff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    padding: 30px 25px;
+    border-radius: 4px;
+    font-family: 'Times New Roman', Times, serif;
+    color: #000;
+}
+
+/* Header Styles */
+.timesheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #000;
+}
+
+.header-title {
+    font-size: 16px;
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.month-display {
+    font-size: 18px;
+    font-weight: bold;
+    font-style: italic;
+}
+
+/* Column Headers */
+.timesheet-columns {
+    display: grid;
+    grid-template-columns: 140px repeat(5, 1fr) 100px;
+    border: 2px solid #000;
+    border-bottom: none;
+    background-color: #f5f5f5;
+}
+
+.header-cell {
+    padding: 8px 4px;
+    font-weight: bold;
+    text-align: center;
+    border-right: 1px solid #000;
+    font-size: 12px;
+}
+
+.header-cell:last-child {
+    border-right: none;
+}
+
+.name-header {
+    text-align: left;
+    padding-left: 10px;
+}
+
+/* Child Block */
+.timesheet-child-block {
+    border: 2px solid #000;
+    border-top: none;
+}
+
+.timesheet-row {
+    display: grid;
+    grid-template-columns: 140px repeat(5, 1fr) 100px;
+    min-height: 22px;
+}
+
+.timesheet-row:not(:last-child) {
+    border-bottom: 1px solid #ccc;
+}
+
+.total-row {
+    border-top: 1px solid #000;
+    background-color: #f9f9f9;
+}
+
+.name-row {
+    border-bottom: 1px solid #000;
+    background-color: #fafafa;
+}
+
+/* Cell Styles */
+.cell {
+    border-right: 1px solid #000;
+    padding: 3px 5px;
+    display: flex;
+    align-items: center;
+    font-size: 11px;
+    position: relative;
+}
+
+.cell:last-child {
+    border-right: none;
+}
+
+.name-cell {
+    flex-direction: row;
+    gap: 5px;
+}
+
+.row-number {
+    font-weight: bold;
+    font-size: 12px;
+    color: #666;
+    min-width: 15px;
+}
+
+.name-input,
+.dob-input {
+    flex: 1;
+    border-bottom: 1px dotted #999;
+    min-height: 16px;
+}
+
+.day-cell {
+    justify-content: flex-start;
+    padding-left: 3px;
+    min-height: 18px;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.time-value {
+    font-size: 10px;
+    font-weight: 500;
+    color: #333;
+    margin-left: 2px;
+}
+
+.in-label,
+.out-label {
+    font-size: 9px;
+    font-weight: bold;
+    color: #555;
+    background-color: #eee;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+.in-label {
+    color: #2e7d32;
+    background-color: #e8f5e9;
+}
+
+.out-label {
+    color: #c62828;
+    background-color: #ffebee;
+}
+
+.label {
+    font-size: 10px;
+    font-weight: bold;
+    color: #333;
+}
+
+.signature-cell {
+    min-width: 100px;
+}
+
+/* Grand Total */
+.grand-total-row {
+    display: grid;
+    grid-template-columns: 1fr 150px;
+    border: 2px solid #000;
+    border-top: none;
+    background-color: #f0f0f0;
+}
+
+.grand-total-label {
+    padding: 10px;
+    font-weight: bold;
+    font-size: 14px;
+    border-right: 2px solid #000;
+}
+
+.grand-total-value {
+    padding: 10px;
+    min-height: 25px;
+}
+
+/* Print Controls */
+.print-controls {
+    margin-top: 30px;
+    text-align: center;
+}
+
+.print-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    font-size: 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.print-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+}
+
+/* Print Styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    .printable-timesheet {
+        background-color: white;
+        padding: 0;
+        min-height: auto;
+    }
+
+    .timesheet-paper {
+        box-shadow: none;
+        padding: 15px;
+        max-width: none;
+        width: 100%;
+    }
+
+    @page {
+        size: landscape;
+        margin: 0.5in;
+    }
+
+    .timesheet-columns,
+    .timesheet-child-block,
+    .grand-total-row {
+        break-inside: avoid;
+    }
+}
+
+/* Responsive */
+@media screen and (max-width: 768px) {
+    .printable-timesheet {
+        padding: 10px;
+    }
+
+    .timesheet-paper {
+        padding: 15px 10px;
+    }
+
+    .timesheet-columns,
+    .timesheet-row {
+        grid-template-columns: 100px repeat(5, 1fr) 70px;
+    }
+
+    .header-title {
+        font-size: 12px;
+    }
+
+    .month-display {
+        font-size: 14px;
+    }
+}

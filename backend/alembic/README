@@ -1,0 +1,4 @@
+CareSync Basic is migration-owned from revision zero. The first revision refuses
+to run when legacy product tables already exist; point it only at the empty
+Basic database. Legacy schema reflection remains under app/models and is not an
+Alembic target.

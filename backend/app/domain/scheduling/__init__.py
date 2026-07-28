@@ -1,0 +1,78 @@
+"""Scheduling domain and optimization primitives."""
+
+from app.domain.scheduling.constraints import (
+    BUILT_IN_CONSTRAINTS,
+    Constraint,
+    ConstraintContext,
+    ConstraintEngine,
+    ConstraintResult,
+    ConstraintValidationResult,
+)
+from app.domain.scheduling.engine import SchedulerAuditTrail, SchedulerEngine
+from app.domain.scheduling.fairness import FairnessCalculator
+from app.domain.scheduling.grid import TimeSlotGrid
+from app.domain.scheduling.siblings import (
+    CoherenceResult,
+    CoherenceSuggestion,
+    FamilyCoherenceReport,
+    FamilyGroup,
+    SiblingCoherence,
+)
+from app.domain.scheduling.types import (
+    CapacityState,
+    ChildPreferences,
+    ChildProfile,
+    ChildTimeOverride,
+    DailyUtilization,
+    HistoricalAttendance,
+    OperatingHours,
+    ScheduleEntry,
+    SchedulerConfig,
+    ScheduleResult,
+    SchedulerUtilizationReport,
+    ScheduleStats,
+    ScheduleWarning,
+    SchedulingDecision,
+    SchedulingFairnessMetrics,
+    SchedulingFairnessReport,
+    SchedulingGoals,
+    TimeGap,
+    TimeSlotInfo,
+)
+
+__all__ = [
+    "CapacityState",
+    "BUILT_IN_CONSTRAINTS",
+    "ChildPreferences",
+    "ChildTimeOverride",
+    "ChildProfile",
+    "CoherenceResult",
+    "CoherenceSuggestion",
+    "Constraint",
+    "ConstraintContext",
+    "ConstraintEngine",
+    "ConstraintResult",
+    "ConstraintValidationResult",
+    "DailyUtilization",
+    "FairnessCalculator",
+    "FamilyCoherenceReport",
+    "FamilyGroup",
+    "HistoricalAttendance",
+    "OperatingHours",
+    "ScheduleEntry",
+    "SchedulerAuditTrail",
+    "SchedulerConfig",
+    "SchedulerEngine",
+    "SchedulerUtilizationReport",
+    "ScheduleResult",
+    "ScheduleStats",
+    "ScheduleWarning",
+    "SchedulingDecision",
+    "SchedulingGoals",
+    "SchedulingFairnessMetrics",
+    "SchedulingFairnessReport",
+    "SiblingCoherence",
+    "TimeGap",
+    "TimeSlotGrid",
+    "TimeSlotInfo",
+]

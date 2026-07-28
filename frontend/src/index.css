@@ -1,0 +1,321 @@
+@import './assets/styles/fonts.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Comfortaa', system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(15, 23, 42, 0.87);
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+  @apply border-gray-200;
+}
+
+@layer components {
+  /* Typography Components - Standardized Font Weights */
+  .text-light {
+    @apply font-light;
+    font-weight: 300;
+  }
+  
+  .text-normal {
+    @apply font-normal;
+    font-weight: 400;
+  }
+  
+  .text-medium {
+    @apply font-medium;
+    font-weight: 500;
+  }
+  
+  .text-semibold {
+    @apply font-semibold;
+    font-weight: 600;
+  }
+  
+  .text-bold {
+    @apply font-bold;
+    font-weight: 700;
+  }
+
+  /* Heading Components with Standardized Typography */
+  .heading-xl {
+    @apply text-4xl text-bold leading-tight;
+  }
+  
+  .heading-lg {
+    @apply text-3xl text-semibold leading-tight;
+  }
+  
+  .heading-md {
+    @apply text-2xl text-semibold leading-snug;
+  }
+  
+  .heading-sm {
+    @apply text-xl text-medium leading-snug;
+  }
+  
+  .heading-xs {
+    @apply text-lg text-medium leading-snug;
+  }
+
+  /* Body Text Components */
+  .body-lg {
+    @apply text-lg text-normal leading-relaxed;
+  }
+  
+  .body-md {
+    @apply text-base text-normal leading-relaxed;
+  }
+  
+  .body-sm {
+    @apply text-sm text-normal leading-normal;
+  }
+  
+  .body-xs {
+    @apply text-xs text-normal leading-normal;
+  }
+
+  /* Button Components */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold border-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    font-family: 'Comfortaa', sans-serif;
+    border-radius: 8px;
+  }
+  
+  .btn-primary {
+    background-color: #8967A4;
+    border-color: #8967A4;
+    color: white;
+  }
+  
+  .btn-primary:hover {
+    background-color: #7A5B96;
+    border-color: #7A5B96;
+  }
+  
+  .btn-primary:focus {
+    @apply ring-primary-300;
+  }
+  
+  .btn-secondary {
+    background-color: white;
+    border-color: #8967A4;
+    color: #8967A4;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #FAF8FC;
+    border-color: #7A5B96;
+    color: #7A5B96;
+  }
+  
+  .btn-secondary:focus {
+    @apply ring-primary-300;
+  }
+  
+  .btn-danger {
+    @apply bg-red-600 border-red-600 text-white;
+  }
+  
+  .btn-danger:hover {
+    @apply bg-red-700 border-red-700;
+  }
+  
+  .btn-sm {
+    @apply px-4 py-2 text-xs;
+  }
+  
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+  
+  .input {
+    @apply block w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors;
+  }
+  
+  .form-input {
+    @apply block w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors;
+  }
+  
+  .form-select {
+    @apply block px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+  }
+  
+  .card-header {
+    @apply px-6 py-4 border-b border-gray-200;
+  }
+  
+  .card-body {
+    @apply px-6 py-4;
+  }
+  
+  .sidebar-nav-item {
+    @apply flex items-center px-3 py-2 text-sm text-medium rounded-lg transition-colors;
+  }
+  
+  .sidebar-nav-item-active {
+    @apply bg-primary-100 text-primary-700;
+  }
+  
+  .sidebar-nav-item-inactive {
+    @apply text-gray-600 hover:bg-gray-100 hover:text-gray-900;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs text-medium;
+  }
+  
+  .badge-success {
+    @apply bg-green-100 text-green-800;
+  }
+  
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800;
+  }
+  
+  .badge-error {
+    @apply bg-red-100 text-red-800;
+  }
+  
+  .badge-info {
+    @apply bg-primary-100 text-primary-700;
+  }
+
+  /* Sidebar specific styles from Vue app */
+  .logo-text {
+    color: #01151B;
+    font-family: 'Comfortaa', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    transition: all 0.2s ease;
+    padding: 12px 16px;
+    gap: 12px;
+    border-radius: 8px;
+    color: #6F6B6C;
+    font-family: 'Comfortaa', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    text-decoration: none;
+  }
+
+  .nav-item svg {
+    color: currentColor;
+    flex-shrink: 0;
+  }
+
+  .nav-item:hover {
+    background: #F9F5FF;
+    color: #8967A4;
+  }
+
+  .nav-item--active {
+    background: #F2ECF8;
+    color: #8967A4;
+  }
+
+  .nav-item--bottom {
+    gap: 12px;
+  }
+
+  .user-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: #111827;
+    font-family: 'Comfortaa', sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .divider {
+    width: 80%;
+    height: 1px;
+    margin-left: 21px;
+  }
+}
+
+/* Loading spinner */
+.spinner {
+  @apply inline-block w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin;
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Toast Animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out forwards;
+}
+
+/* Agent Mode Chat Animations */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeSlideIn {
+  animation: fadeSlideIn 0.35s ease-out forwards;
+}
