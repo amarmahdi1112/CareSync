@@ -1,0 +1,80 @@
+map $http_upgrade $caresync_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __CARESYNC_HOST__ www.__CARESYNC_HOST__;
+
+    root /srv/caresync/current/frontend-redesign/dist;
+    index index.html;
+    client_max_body_size 21m;
+    server_tokens off;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    # The API includes ticket-authenticated WebSockets. Keeping the upgrade
+    # headers on the complete API prefix also covers future realtime routes.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $caresync_connection_upgrade;
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        proxy_buffering off;
+    }
+
+    location = /docs {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /openapi.json {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /redoc {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Vite fingerprints production assets. They are safe to retain for a year;
+    # every deployment changes the URL when its content changes.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # Never cache the SPA shell. A rollback or deployment must be observed on
+    # the next navigation instead of pinning a stale asset manifest.
+    location = /index.html {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+    }
+}

@@ -1,0 +1,58 @@
+[Unit]
+Description=CareSync Expo push outbox worker
+Documentation=file:/srv/caresync/current/deploy/README.md
+Wants=network-online.target
+Requires=caresync-api.service
+After=network-online.target postgresql.service caresync-api.service
+PartOf=caresync-api.service
+ConditionPathExists=/etc/caresync/push-worker.enabled
+
+[Service]
+Type=simple
+User=caresync
+Group=caresync
+WorkingDirectory=/srv/caresync/current/backend
+Environment=CARESYNC_PUSH_WORKER_POLL_SECONDS=5
+EnvironmentFile=/etc/caresync/backend.env
+EnvironmentFile=-/etc/caresync/integrations.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/var/lib/caresync/ocr-home
+ExecCondition=/usr/bin/test "${PUSH_DELIVERY_ENABLED}" = true
+ExecCondition=/usr/bin/test "${PUSH_PROVIDER}" = expo
+ExecStartPre=/usr/bin/test -x /srv/caresync/current/backend/.venv/bin/python
+ExecStart=/srv/caresync/current/backend/.venv/bin/python scripts/push_worker.py --poll ${CARESYNC_PUSH_WORKER_POLL_SECONDS} --batch-size 50
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/caresync
+ReadWritePaths=/var/lib/caresync/ocr-home
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+LimitNOFILE=16384
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

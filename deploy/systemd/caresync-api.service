@@ -1,0 +1,62 @@
+[Unit]
+Description=CareSync production API
+Documentation=file:/srv/caresync/current/deploy/README.md
+Wants=network-online.target
+Requires=postgresql.service
+After=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=caresync
+Group=caresync
+WorkingDirectory=/srv/caresync/current/backend
+EnvironmentFile=/etc/caresync/backend.env
+EnvironmentFile=-/etc/caresync/integrations.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/var/lib/caresync/ocr-home
+Environment=XDG_CACHE_HOME=/var/lib/caresync/ocr-home/cache
+Environment=PADDLE_PDX_CACHE_HOME=/var/lib/caresync/ocr-home/paddlex
+Environment=PADDLE_HOME=/var/lib/caresync/ocr-home/paddle
+ExecStartPre=/usr/bin/test -x /srv/caresync/current/backend/.venv/bin/uvicorn
+ExecStartPre=/usr/bin/test -r /etc/caresync/backend.env
+ExecStart=/srv/caresync/current/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=45s
+KillSignal=SIGTERM
+UMask=0077
+
+# The release tree and host are immutable to the API. Only the named state
+# locations may receive uploads, encrypted evidence, and OCR model/cache data.
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/caresync
+ReadWritePaths=/var/lib/caresync/storage
+ReadWritePaths=/var/lib/caresync/vault/family
+ReadWritePaths=/var/lib/caresync/vault/staff
+ReadWritePaths=/var/lib/caresync/ocr-home
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+LimitNOFILE=65536
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
