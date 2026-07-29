@@ -22,6 +22,7 @@ from app.api.basic import attendance as attendance_api
 from app.api.basic import childcare as childcare_api
 from app.core.config import Settings
 from app.main import create_app
+from tests.postgres_staff_shift_fixture import clock_in_assigned_educator
 
 TEST_PORT = os.getenv("BASIC_POSTGRES_TEST_PORT")
 if TEST_PORT and int(TEST_PORT) in {5432, 5433, 5434}:
@@ -86,7 +87,9 @@ def _register(client: TestClient, identifier: str) -> dict:
     return response.json()
 
 
-def _create_scenario(client: TestClient, headers: dict[str, str]) -> dict[str, str]:
+def _create_scenario(
+    client: TestClient, headers: dict[str, str]
+) -> tuple[dict[str, str], dict[str, str]]:
     timezone = ZoneInfo("America/Edmonton")
     service_date = datetime.now(timezone).date()
     occurred_at = datetime.now(timezone) - timedelta(seconds=1)
@@ -181,17 +184,26 @@ def _create_scenario(client: TestClient, headers: dict[str, str]) -> dict[str, s
     )
     assert placement.status_code == 200, placement.text
 
-    return {
-        "facility_id": facility_id,
-        "program_id": program_id,
-        "original_room_id": rooms[0],
-        "new_room_id": rooms[1],
-        "child_id": child.json()["id"],
-        "enrollment_id": enrollment.json()["id"],
-        "enrollment_version": str(placement.json()["version"]),
-        "occurred_at": occurred_at.isoformat(),
-        "service_date": service_date.isoformat(),
-    }
+    staff_headers = clock_in_assigned_educator(
+        client,
+        headers,
+        facility_id=facility_id,
+        room_id=rooms[0],
+    )
+    return (
+        {
+            "facility_id": facility_id,
+            "program_id": program_id,
+            "original_room_id": rooms[0],
+            "new_room_id": rooms[1],
+            "child_id": child.json()["id"],
+            "enrollment_id": enrollment.json()["id"],
+            "enrollment_version": str(placement.json()["version"]),
+            "occurred_at": occurred_at.isoformat(),
+            "service_date": service_date.isoformat(),
+        },
+        staff_headers,
+    )
 
 
 def _add_second_facility(
@@ -217,7 +229,8 @@ def _run_requests(
     *,
     attendance_client: TestClient,
     childcare_client: TestClient,
-    headers: dict[str, str],
+    attendance_headers: dict[str, str],
+    childcare_headers: dict[str, str],
     scenario: dict[str, str],
     start_check_in_first: bool,
 ) -> tuple[dict[str, object], dict[str, Exception], Thread, Thread]:
@@ -228,7 +241,7 @@ def _run_requests(
         try:
             responses["check_in"] = attendance_client.post(
                 "/api/v1/attendance/check-in",
-                headers=headers,
+                headers=attendance_headers,
                 json={
                     "client_operation_id": str(uuid4()),
                     "child_id": scenario["child_id"],
@@ -243,7 +256,7 @@ def _run_requests(
         try:
             responses["move"] = childcare_client.patch(
                 f"/api/v1/enrollments/{scenario['enrollment_id']}",
-                headers=headers,
+                headers=childcare_headers,
                 json={
                     "client_operation_id": str(uuid4()),
                     "expected_version": int(scenario["enrollment_version"]),
@@ -275,7 +288,7 @@ def test_check_in_lock_wins_and_concurrent_enrollment_pause_is_rejected(
     ):
         auth = _register(attendance_client, uuid4().hex)
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
-        scenario = _create_scenario(attendance_client, headers)
+        scenario, attendance_headers = _create_scenario(attendance_client, headers)
 
         enrollment_locked = Event()
         allow_check_in = Event()
@@ -292,7 +305,8 @@ def test_check_in_lock_wins_and_concurrent_enrollment_pause_is_rejected(
         responses, failures, check_in_thread, move_thread = _run_requests(
             attendance_client=attendance_client,
             childcare_client=childcare_client,
-            headers=headers,
+            attendance_headers=attendance_headers,
+            childcare_headers=headers,
             scenario=scenario,
             start_check_in_first=True,
         )
@@ -338,7 +352,7 @@ def test_enrollment_pause_lock_wins_and_check_in_sees_committed_status(
     ):
         auth = _register(attendance_client, uuid4().hex)
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
-        scenario = _create_scenario(attendance_client, headers)
+        scenario, attendance_headers = _create_scenario(attendance_client, headers)
 
         move_ready_to_commit = Event()
         allow_move_commit = Event()
@@ -362,7 +376,8 @@ def test_enrollment_pause_lock_wins_and_check_in_sees_committed_status(
         responses, failures, check_in_thread, move_thread = _run_requests(
             attendance_client=attendance_client,
             childcare_client=childcare_client,
-            headers=headers,
+            attendance_headers=attendance_headers,
+            childcare_headers=headers,
             scenario=scenario,
             start_check_in_first=False,
         )
@@ -410,7 +425,7 @@ def test_check_in_serializes_competing_second_facility_enrollment(
     ):
         auth = _register(first_client, uuid4().hex)
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
-        scenario = _create_scenario(first_client, headers)
+        scenario, attendance_headers = _create_scenario(first_client, headers)
         second_facility_id = _add_second_facility(first_client, headers)
 
         first_has_child_lock = Event()
@@ -443,7 +458,7 @@ def test_check_in_serializes_competing_second_facility_enrollment(
             try:
                 responses["check_in"] = first_client.post(
                     "/api/v1/attendance/check-in",
-                    headers=headers,
+                    headers=attendance_headers,
                     json={
                         "client_operation_id": str(uuid4()),
                         "child_id": scenario["child_id"],

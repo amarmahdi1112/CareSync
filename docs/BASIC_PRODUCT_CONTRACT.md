@@ -1,7 +1,7 @@
 # CareSync Basic — Product Contract
 
 Status: released local through 0039; later source implementation verified  
-Checked-in release target: `0042_billing_policy_recert`  
+Checked-in release target: `0043_org_wide_room_presence`
 Retained runtime: `0039_admissions_decision_spine` after exact guarded 0038-to-0039 cutover  
 Stage: Basic  
 Analyzer/scheduler: deliberately excluded
@@ -73,8 +73,9 @@ billing additionally remains non-writable until an allowlisted organization's ow
 explicit 0036 activation. The guarded retained 0039 cutover has completed, but
 neither the facility-release nor organization-billing activation was created
 by that cutover. Checked-in source now extends through verified
-`0041_live_room_presence` and the narrow 0042 billing-policy recertification,
-but neither revision has been applied to retained port 5434. Revision 0039
+`0041_live_room_presence`, the narrow 0042 billing-policy recertification and
+the additive `0043_org_wide_room_presence` role repair, but none of those
+revisions has been applied to retained port 5434. Revision 0039
 releases the private administrator admissions spine; revision 0038 releases
 public-job catalog replay; revision 0037 remains the agreement-scope repair and
 0036 remains the manual-billing protocol.
@@ -334,10 +335,10 @@ schema migration; the retained Alembic head remains exactly
 `0039_admissions_decision_spine`. Signed-in administrator browser-click
 acceptance remains pending.
 
-## Current 0041/0042 verified-source checkpoint
+## Current 0041–0043 release-target checkpoint
 
 Checked-in source and `scripts/start-basic.sh` are pinned to
-`0042_billing_policy_recert`. Retained PostgreSQL 17 on port 5434 remains at
+`0043_org_wide_room_presence`. Retained PostgreSQL 17 on port 5434 remains at
 `0039_admissions_decision_spine`; the source pin must not be confused with a
 completed retained cutover.
 
@@ -352,6 +353,13 @@ canonical or audited PostgreSQL dump/restore rendering of the 36 frozen 0033
 billing policies, transactionally recreates canonical definitions and rejects
 missing, mixed, tampered or unknown catalogs. It adds no product behavior or
 billing authority.
+
+0043 is an additive 0041 guard recertification for organization-wide owner and
+administrator roles. While clocked in, those roles may select any active room
+in the active shift facility without receiving a room-scope assignment; all
+other roles still require an active room assignment. The migration preserves
+the 0041 permission, shift, facility, tenant, provenance and immutability
+checks and adds no transport or regulatory-compliance authority.
 
 The populated disposable clone preserved all 16,508 rows across 140 pre-0041
 business tables through both migration round trips. Its count digest is

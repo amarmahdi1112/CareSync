@@ -23,6 +23,7 @@ Status values are `not started`, `in progress`, `verified`, `released local`, or
 | Billing readiness batch planner (`0040`) | verified | Deterministic privacy-bounded setup waves and no-write preview are live in the retained API; Apply reuses canonical account/payer/rate/agreement commands, retained head stays 0039, and signed-in setup browser acceptance remains pending |
 | Live room presence and operational safety board (`0041`) | verified | Server-confirmed room-presence intervals, exact-retry move/end, child-operation room gate, operational configured-target board, append-only exception episodes, strict admin/staff contracts and realtime invalidation passed the complete disposable source evidence; retained 5434 remains at 0039 and signed-in/physical-device acceptance is pending |
 | Billing policy recertification (`0042`) | verified | Exact whole-catalog A/B preflight, transactional recreation of the 36 frozen 0033 policies, tamper/mixed-profile rejection and PostgreSQL 17 A-to-B dump/restore runtime certification passed; this is a source integrity repair with no new billing authority and no retained cutover |
+| Organization-wide room presence (`0043`) | verified | Additive 0041 guard recertification lets clocked-in owners and administrators select an active room in their shift facility without a room-scope assignment, while preserving assignment checks for other roles and every existing shift, facility, tenant, provenance and immutability guard |
 | Candidate marketplace and employer ATS | released local | Canonical `/marketplace`, `/ats` and `/ats/marketplace` routes share one lifecycle/repository boundary; legacy hiring prefixes and unused client adapters are retired |
 | Public job catalog replay (`0038`) | released local | Forced-RLS public-safe projection plus durable replay invalidates opened, updated and closed listings for unaffiliated candidates without publishing draft, tenant, candidate, application or free-text data |
 | Invoice record, PDF, delivery and payment processing | in progress | Canonical synthetic/private-manual invoice preview plus browser print/save-PDF is implemented; external delivery, tax receipt, processor request and money movement remain absent |
@@ -46,12 +47,13 @@ two independent green PostgreSQL 17 admissions runs.
 The preceding cutovers remain historical evidence. Product slice
 `0040_billing_readiness_batch_planner` is verified in source and through
 retained live read-only API acceptance. Source then advanced through verified
-`0041_live_room_presence` and `0042_billing_policy_recert`; the checked-in
-launcher is pinned to 0042, while the retained PostgreSQL 17 database on port
+`0041_live_room_presence`, `0042_billing_policy_recert` and
+`0043_org_wide_room_presence`; the checked-in launcher is pinned to 0043, while
+the retained PostgreSQL 17 database on port
 5434 remains exactly at 0039. The populated disposable clone preserved all
 16,508 rows across 140 pre-0041 business tables with count digest
 `19376c0797dc5bf0613695b11448a3e16516c37751f694622773d55b8f8d62bd`
 and row digest
 `ab12ea50137809a4cc5e9a049d7f7b0f3fcfa37739f2690a024e2b54fe0fb846`.
-Neither 0041 nor 0042 is a retained cutover. Signed-in administrator and
+None of 0041 through 0043 is a retained cutover. Signed-in administrator and
 physical Android acceptance for 0041 remain pending.

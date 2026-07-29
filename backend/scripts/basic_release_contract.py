@@ -1,12 +1,12 @@
-"""Fail-closed evidence contract for the CareSync Basic 0039 -> 0042 release.
+"""Fail-closed evidence contract for the CareSync Basic 0039 -> 0043 release.
 
 The release has durable, independently reopenable decisions:
 
 * a *candidate* receipt proves that an exact 0039 source was backed up,
-  restored into a different PostgreSQL cluster, migrated to 0042, and
+  restored into a different PostgreSQL cluster, migrated to 0043, and
   certified without changing any pre-existing business row; and
 * a *commit* receipt proves that the same retained PostgreSQL identity reached
-  the already-certified 0042 state.
+  the already-certified 0043 state.
 * a *finalization* receipt is issued only after the committed runtime and the
   fixed loopback API/frontend health surfaces pass while the release fence is
   still present; and
@@ -53,7 +53,8 @@ else:
     from darwin_durability import full_sync_fd
 
 SOURCE_REVISION = "0039_admissions_decision_spine"
-TARGET_REVISION = "0042_billing_policy_recert"
+INTERMEDIATE_REVISION = "0042_billing_policy_recert"
+TARGET_REVISION = "0043_org_wide_room_presence"
 
 NEW_0041_TABLES = (
     "room_operational_exception_events",
@@ -2300,7 +2301,9 @@ def _validate_runtime_state(value: Any) -> dict[str, Any]:
         label="live runtime state",
     )
     if state["revision"] != TARGET_REVISION or state["billingPolicyProfile"] != "A":
-        raise ReleaseContractError("live runtime state is not exact 0042 profile A")
+        raise ReleaseContractError(
+            "live runtime state is not exact 0043 with frozen billing profile A"
+        )
     _validate_identity(state["identity"])
     certificate = _require_shape(
         state["runtimeCertificate"],
@@ -3155,7 +3158,7 @@ def verify_live_commit_state(
     release_payload_path: Path,
     artifact_paths: Mapping[str, Path],
 ) -> dict[str, Any]:
-    """Reopen a commit and prove the currently configured live 0042 state."""
+    """Reopen a commit and prove the currently configured live 0043 state."""
 
     commit = verify_commit_receipt(
         commit_receipt_path=commit_receipt_path,
@@ -3168,7 +3171,7 @@ def verify_live_commit_state(
     verify_source_promoted_identity(commit["source"], current_promoted_snapshot)
     if current_promoted_snapshot != commit["promoted"]:
         raise ReleaseContractError(
-            "Current live 0042 snapshot differs from the commit receipt"
+            "Current live 0043 snapshot differs from the commit receipt"
         )
     return commit
 
@@ -3611,7 +3614,7 @@ def _add_verification_inputs(parser: argparse.ArgumentParser) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Certify the two-phase CareSync Basic 0039 to 0042 release"
+        description="Certify the two-phase CareSync Basic 0039 to 0043 release"
     )
     commands = parser.add_subparsers(dest="command", required=True)
 

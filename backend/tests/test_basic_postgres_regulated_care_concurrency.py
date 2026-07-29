@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
+from tests.postgres_staff_shift_fixture import clock_in_assigned_educator
 
 TEST_PORT = os.getenv("BASIC_POSTGRES_TEST_PORT")
 if TEST_PORT and int(TEST_PORT) in {5432, 5433, 5434}:
@@ -156,9 +157,15 @@ def _setup(client: TestClient) -> tuple[dict[str, str], dict[str, str]]:
         },
     )
     assert placement.status_code == 200, placement.text
+    staff_headers = clock_in_assigned_educator(
+        client,
+        headers,
+        facility_id=facility.json()["id"],
+        room_id=room.json()["id"],
+    )
     checked_in = client.post(
         "/api/v1/attendance/check-in",
-        headers=headers,
+        headers=staff_headers,
         json={
             "client_operation_id": str(uuid4()),
             "child_id": child.json()["id"],
@@ -213,7 +220,7 @@ def _setup(client: TestClient) -> tuple[dict[str, str], dict[str, str]]:
         },
     )
     assert activated.status_code == 200, activated.text
-    return headers, {
+    return staff_headers, {
         "facility_id": facility.json()["id"],
         "room_id": room.json()["id"],
         "attendance_day_id": checked_in.json()["id"],

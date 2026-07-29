@@ -216,6 +216,12 @@ _LIVE_ROOM_PRESENCE_0041_FUNCTION_SOURCE_SHA256 = {
         "bac2311c2624c353a0291b9306e2f5feeba55044efc62fa82d02d6568777cdff"
     ),
 }
+_LIVE_ROOM_PRESENCE_0043_FUNCTION_SOURCE_SHA256 = {
+    **_LIVE_ROOM_PRESENCE_0041_FUNCTION_SOURCE_SHA256,
+    "caresync_0041_presence_row_guard": (
+        "184a58df0881eaec6593da4f82193877bac79179ea3e26bc37bbef724e595390"
+    ),
+}
 _LIVE_ROOM_PRESENCE_0041_CHECK_EXPRESSION_SHA256 = {
     (
         "room_operational_exception_events",
@@ -2462,9 +2468,15 @@ class Database:
                 for row in trigger_metadata
             ):
                 invalid("PostgreSQL mutation guard bindings have drifted")
-            function_names = set(
-                _LIVE_ROOM_PRESENCE_0041_FUNCTION_SOURCE_SHA256
+            trusted_function_hashes = (
+                _LIVE_ROOM_PRESENCE_0043_FUNCTION_SOURCE_SHA256
+                if _revision_descends_from(
+                    str(revision or ""),
+                    "0043_org_wide_room_presence",
+                )
+                else _LIVE_ROOM_PRESENCE_0041_FUNCTION_SOURCE_SHA256
             )
+            function_names = set(trusted_function_hashes)
             function_rows = {
                 str(row.proname): row
                 for row in connection.execute(
@@ -2523,9 +2535,7 @@ class Database:
                         frozenset({"search_path=pg_catalog,public"}),
                     }
                     or _canonical_sql_sha256(str(row.prosrc))
-                    != _LIVE_ROOM_PRESENCE_0041_FUNCTION_SOURCE_SHA256[
-                        str(row.proname)
-                    ]
+                    != trusted_function_hashes[str(row.proname)]
                     for row in function_rows.values()
                 )
             ):

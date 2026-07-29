@@ -2,7 +2,7 @@
 > **Retained-release commands supersede legacy instructions below (2026-07-26).**
 > The remainder of this document is preserved verbatim for product and audit
 > context. For the retained `0039_admissions_decision_spine` to
-> `0042_billing_policy_recert` release, do not execute any older startup,
+> `0043_org_wide_room_presence` release, do not execute any older startup,
 > migration, cutover, restore, or rollback command found below. The canonical
 > contract is `scripts/BASIC_RELEASE_CLI_CONTRACT.md`. Its current two-phase
 > operator flow is:
@@ -11,14 +11,14 @@
 > scripts/basic-release.sh prepare [--clone-port 55000..60999]
 > scripts/basic-release.sh commit \
 >   --receipt /absolute/private/run/candidate-receipt.json \
->   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0042"
+>   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0043"
 > ```
 >
 > Finalized emergency rollback requires the candidate, commit and finalization
 > receipts. Interrupted intent-only rollback supplies only the candidate receipt;
 > it omits both finalized-receipt flags and is accepted only when the run contains
 > its exact durable commit-attempt intent. Both use the exact confirmation phrase
-> `ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039`.
+> `ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039`.
 >
 
 # CareSync schema-cutover backup and restore gate

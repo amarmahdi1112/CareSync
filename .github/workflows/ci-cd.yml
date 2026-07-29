@@ -152,7 +152,7 @@ jobs:
           /usr/lib/postgresql/17/bin/psql --version \
             | grep -Eq '^psql \(PostgreSQL\) 17\.10 '
 
-          # One frozen 0042 proof predates the portable CARESYNC_POSTGRES_BIN
+          # One frozen billing-policy proof predates the portable CARESYNC_POSTGRES_BIN
           # override. Supply its reviewed path without weakening that proof.
           sudo install -d -m 0755 /opt/homebrew/opt/postgresql@17/bin
           sudo ln -s \
@@ -217,6 +217,7 @@ jobs:
           BASIC_POSTGRES_ADMISSIONS_TEST_URL="${admissions_admin_url}" \
           BASIC_POSTGRES_BILLING_LEDGER_TEST_URL="${postgres_admin_url}" \
           BASIC_POSTGRES_DRIVER_REGISTRY_TEST_URL="${postgres_admin_url}" \
+          BASIC_POSTGRES_ORG_WIDE_ROOM_PRESENCE_0043_TEST_URL="${room_safety_admin_url}" \
           BASIC_POSTGRES_ROOM_SAFETY_0041_TEST_URL="${room_safety_admin_url}" \
           BASIC_POSTGRES_TRANSPORT_COMMANDS_TEST_URL="${postgres_admin_url}" \
           BASIC_POSTGRES_PUBLIC_JOB_OUTBOX_TEST_URL="${postgres_admin_url}" \
@@ -226,6 +227,7 @@ jobs:
               tests/test_basic_postgres_admissions_decision_spine.py \
               tests/test_basic_postgres_billing_ledger.py \
               tests/test_basic_postgres_driver_vehicle_registry.py \
+              tests/test_basic_postgres_org_wide_room_presence_0043.py \
               tests/test_basic_postgres_room_safety_0041.py \
               tests/test_basic_postgres_transport_registry_commands.py \
               tests/test_basic_postgres_transport_downstream_attestation.py \
@@ -237,6 +239,146 @@ jobs:
           BASIC_POSTGRES_MIGRATION_TEST_PORT="${disposable_port}" \
             uv run pytest \
               tests/test_basic_postgres_childcare_command_spine_migration_gate.py
+
+          # Frozen authority, release, and screening proofs assert exact historical
+          # Alembic revisions. Give every revision a fresh database and fresh
+          # cluster roles, apply the capability-gated runtime bootstrap, and run
+          # only nodes that remain compatible with that exact schema.
+          prepare_frozen_revision() {
+            local revision="$1"
+            "${dropdb}" \
+              --if-exists \
+              --force \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              caresync
+            "${psql}" \
+              --no-psqlrc \
+              --set=ON_ERROR_STOP=1 \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              --dbname=postgres <<'SQL'
+          DROP ROLE IF EXISTS caresync_basic_app;
+          DROP ROLE IF EXISTS migration_owner;
+          CREATE ROLE migration_owner
+            LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+            NOREPLICATION BYPASSRLS;
+          CREATE ROLE caresync_basic_app
+            LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
+            NOREPLICATION NOBYPASSRLS;
+          SQL
+            "${createdb}" \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              --owner=migration_owner \
+              caresync
+            ENVIRONMENT=test \
+            DATABASE_TYPE=postgres \
+            DATABASE_HOST=127.0.0.1 \
+            DATABASE_PORT="${disposable_port}" \
+            DATABASE_USER=migration_owner \
+            DATABASE_PASSWORD='' \
+            DATABASE_NAME=caresync \
+            DATABASE_SSL=false \
+            DATABASE_READ_ONLY=false \
+              uv run alembic upgrade "${revision}"
+            observed_revision="$(
+              "${psql}" \
+                --no-psqlrc \
+                --tuples-only \
+                --no-align \
+                --host=127.0.0.1 \
+                --port="${disposable_port}" \
+                --username=postgres \
+                --dbname=caresync \
+                --command='SELECT version_num FROM public.alembic_version'
+            )"
+            [[ "${observed_revision}" == "${revision}" ]] || {
+              printf \
+                '::error::Expected frozen revision %s, found %s\n' \
+                "${revision}" \
+                "${observed_revision}" >&2
+              exit 1
+            }
+            "${psql}" \
+              --no-psqlrc \
+              --set=ON_ERROR_STOP=1 \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              --dbname=caresync \
+              --file=scripts/bootstrap_basic_runtime_role.sql
+          }
+
+          cleanup_frozen_revision() {
+            "${dropdb}" \
+              --if-exists \
+              --force \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              caresync
+            "${psql}" \
+              --no-psqlrc \
+              --set=ON_ERROR_STOP=1 \
+              --host=127.0.0.1 \
+              --port="${disposable_port}" \
+              --username=postgres \
+              --dbname=postgres \
+              --command='DROP ROLE IF EXISTS caresync_basic_app; DROP ROLE IF EXISTS migration_owner'
+          }
+
+          prepare_frozen_revision 0029A_family_authority_kernel
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+            uv run pytest tests/test_basic_postgres_family_authority_kernel.py
+          cleanup_frozen_revision
+
+          prepare_frozen_revision 0029A1_family_evidence_vault
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+            uv run pytest \
+              tests/test_basic_postgres_family_evidence_vault.py \
+              tests/test_basic_postgres_family_authority_api.py
+          cleanup_frozen_revision
+
+          prepare_frozen_revision 0029A2_authority_activation
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+            uv run pytest \
+              tests/test_basic_postgres_family_authority_activation.py \
+              tests/test_basic_postgres_family_authority_workspace_activation.py
+          cleanup_frozen_revision
+
+          prepare_frozen_revision 0029B_release_context
+          # Exclude test_z_postgres_exact_a2_roundtrip: its final Alembic check
+          # asks whether frozen B is the source-tree head, which is no longer true.
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+            uv run pytest \
+              tests/test_basic_postgres_family_release_context.py::test_release_context_catalog_boundary_is_exact \
+              tests/test_basic_postgres_family_release_context.py::test_release_context_detector_accepts_complete_and_rejects_missing_execute \
+              tests/test_basic_postgres_family_release_context.py::test_runtime_projection_is_gated_minimum_and_direct_a2_reads_stay_closed \
+              tests/test_basic_postgres_family_release_context.py::test_security_definer_projection_rejects_every_operational_gate_failure \
+              tests/test_basic_postgres_family_release_context.py::test_postgres_revision_change_emits_one_exact_generic_event \
+              tests/test_basic_postgres_family_release_context.py::test_nonoverlapping_shift_and_attendance_states_never_compose_context
+          cleanup_frozen_revision
+
+          prepare_frozen_revision 0029D_release_checkout_writer
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+            uv run pytest tests/test_basic_postgres_release_checkout_writer.py
+          cleanup_frozen_revision
+
+          prepare_frozen_revision 0030_staff_screening_paths
+          BASIC_POSTGRES_TEST_PORT="${disposable_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+          BASIC_POSTGRES_TEST_ADMIN_USER=postgres \
+            uv run pytest tests/test_basic_postgres_staff_screening_pathways.py
+          cleanup_frozen_revision
 
           # Build the same owner/runtime-role topology used by production.
           "${psql}" \
@@ -291,31 +433,86 @@ jobs:
             --dbname=caresync \
             --file=scripts/bootstrap_basic_runtime_role.sql
 
+          # Certify adversarial role drift on its own. This suite deliberately
+          # changes cluster roles, schema ACLs, and repository function grants.
+          BASIC_POSTGRES_TEST_PORT="${runtime_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+          BASIC_POSTGRES_TEST_ADMIN_USER=postgres \
+          BASIC_POSTGRES_TEST_MIGRATION_USER=migration_owner \
+            uv run pytest tests/test_basic_postgres_runtime_role_hardening.py
+          "${psql}" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --host=127.0.0.1 \
+            --port="${runtime_port}" \
+            --username=postgres \
+            --dbname=caresync \
+            --file=scripts/bootstrap_basic_runtime_role.sql
+
+          # These are current-head behavior proofs. Frozen 0029A-0030 catalog
+          # suites assert their historical Alembic revisions and must never be
+          # pointed at the 0043 production schema.
           BASIC_POSTGRES_TEST_PORT="${runtime_port}" \
           BASIC_POSTGRES_TEST_DATABASE=caresync \
           BASIC_POSTGRES_TEST_ADMIN_USER=postgres \
           BASIC_POSTGRES_TEST_MIGRATION_USER=migration_owner \
             uv run pytest \
               tests/test_basic_postgres_care_attendance_concurrency.py \
-              tests/test_basic_postgres_childcare_command_spine.py \
               tests/test_basic_postgres_enrollment_attendance_concurrency.py \
-              tests/test_basic_postgres_family_authority_activation.py \
-              tests/test_basic_postgres_family_authority_api.py \
-              tests/test_basic_postgres_family_authority_kernel.py \
-              tests/test_basic_postgres_family_evidence_vault.py \
-              tests/test_basic_postgres_family_release_context.py \
               tests/test_basic_postgres_push_rls.py \
               tests/test_basic_postgres_regulated_care_concurrency.py \
-              tests/test_basic_postgres_release_checkout_writer.py \
               tests/test_basic_postgres_rls.py \
               tests/test_basic_postgres_room_deactivation_attendance_concurrency.py \
               tests/test_basic_postgres_room_placement_concurrency.py \
-              tests/test_basic_postgres_runtime_role_hardening.py \
               tests/test_basic_postgres_staff_exchange.py \
               tests/test_basic_postgres_staff_rota.py \
-              tests/test_basic_postgres_staff_screening_pathways.py \
               tests/test_basic_postgres_staff_screening_provisioning.py \
               tests/test_basic_postgres_staff_workforce.py
+
+          # The childcare spine exercises temporary ACL drift. Run it last,
+          # restore the terminal grants, then prove restricted-role startup.
+          BASIC_POSTGRES_TEST_PORT="${runtime_port}" \
+          BASIC_POSTGRES_TEST_DATABASE=caresync \
+          BASIC_POSTGRES_TEST_ADMIN_USER=postgres \
+          BASIC_POSTGRES_TEST_MIGRATION_USER=migration_owner \
+            uv run pytest tests/test_basic_postgres_childcare_command_spine.py
+          "${psql}" \
+            --no-psqlrc \
+            --set=ON_ERROR_STOP=1 \
+            --host=127.0.0.1 \
+            --port="${runtime_port}" \
+            --username=postgres \
+            --dbname=caresync \
+            --file=scripts/bootstrap_basic_runtime_role.sql
+          ENVIRONMENT=test \
+          DATABASE_TYPE=postgres \
+          DATABASE_HOST=127.0.0.1 \
+          DATABASE_PORT="${runtime_port}" \
+          DATABASE_USER=caresync_basic_app \
+          DATABASE_PASSWORD='' \
+          DATABASE_NAME=caresync \
+          DATABASE_SSL=false \
+          DATABASE_READ_ONLY=false \
+          JWT_SECRET=postgres-release-certificate-secret-32-bytes \
+            uv run python - <<'PY'
+          from fastapi.testclient import TestClient
+
+          from app.core.config import get_settings
+          from app.db.session import Database
+          from app.main import create_app
+
+          settings = get_settings()
+          database = Database(settings)
+          try:
+              database.assert_basic_runtime_identity()
+          finally:
+              database.dispose()
+
+          with TestClient(create_app(settings)) as client:
+              response = client.get("/api/v1/health")
+              assert response.status_code == 200, response.text
+              assert response.json().get("status") == "ok", response.json()
+          PY
 
           # Finish with an exact FORCE-RLS logical backup/restore proof using
           # two independent PostgreSQL 17 clusters.

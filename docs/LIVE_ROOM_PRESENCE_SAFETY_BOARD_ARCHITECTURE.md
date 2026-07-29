@@ -7,9 +7,12 @@ Last updated: 2026-07-23
 `0041_live_room_presence_and_safety_board` is implemented and verified in
 source and on disposable PostgreSQL 17 after
 `0040_billing_readiness_batch_planner`. The checked-in source head is now
-`0042_billing_policy_recert`; the retained PostgreSQL 17 database on port 5434
-remains at `0039_admissions_decision_spine`. No retained 0041 or 0042 cutover
-has occurred.
+`0043_org_wide_room_presence`; the retained PostgreSQL 17 database on port 5434
+remains at `0039_admissions_decision_spine`. No retained 0041 through 0043
+cutover has occurred. Revision 0043 additively recertifies the 0041 start guard
+so clocked-in owners and administrators can select an active room in their
+shift facility without a room-scope assignment; other roles and all existing
+0041 safety/provenance checks remain unchanged.
 
 The exact source-release evidence, migration-preservation digests and remaining
 operator gates are recorded in

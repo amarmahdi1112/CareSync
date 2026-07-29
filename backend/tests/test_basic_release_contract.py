@@ -1,4 +1,4 @@
-"""Focused tests for the two-phase 0039 -> 0042 release evidence contract."""
+"""Focused tests for the two-phase 0039 -> 0043 release evidence contract."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from scripts import basic_release_contract
 from scripts.basic_release_contract import (
     CANDIDATE_RECEIPT_FORMAT,
     COMMIT_RECEIPT_FORMAT,
+    INTERMEDIATE_REVISION,
     NEW_0041_TABLES,
     SOURCE_REVISION,
     TARGET_REVISION,
@@ -59,6 +60,12 @@ def test_postgres_identity_normalizes_inet_host_address() -> None:
 
     assert "COALESCE(host(inet_server_addr()),'local')" in source
     assert "COALESCE(inet_server_addr()::text,'local')" not in source
+
+
+def test_release_revision_contract_names_the_interrupted_0042_boundary() -> None:
+    assert SOURCE_REVISION == "0039_admissions_decision_spine"
+    assert INTERMEDIATE_REVISION == "0042_billing_policy_recert"
+    assert TARGET_REVISION == "0043_org_wide_room_presence"
 
 
 def _identity(
@@ -287,7 +294,7 @@ def _release_fixture(tmp_path: Path) -> dict[str, object]:
             b"app_prior_login=login\n"
             b"ingest_prior_login=login\n"
             b"source_revision=0039_admissions_decision_spine\n"
-            b"target_revision=0042_billing_policy_recert\n"
+            b"target_revision=0043_org_wide_room_presence\n"
         ),
     )
     release_probe_credential = _private_bytes(

@@ -374,7 +374,7 @@ def test_two_phase_release_orders_proof_before_retained_migration_and_start() ->
     assert release.count("CARESYNC_ALLOW_PROTECTED_LOCAL_ALEMBIC_TARGET=true") == 1
     assert "alembic downgrade" not in release
     assert '5432|5433|5434)' in release
-    assert "COMMIT CARESYNC RETAINED 0039 TO 0042" not in release
+    assert "COMMIT CARESYNC RETAINED 0039 TO 0043" not in release
     assert "CARESYNC_RELEASE_COMMIT_PHRASE" in release
 
 

@@ -51,10 +51,10 @@ case "${1:-}" in
     START_LABEL="explicitly resumed"
     RELEASE_START_KIND="resume"
     ;;
-  --commit-0042)
+  --commit-0043)
     if [[ "$#" != "5" ]] || [[ "$2" != "--receipt" ]] || \
        [[ "$4" != "--commit-receipt" ]]; then
-      basic_fail "0042 release startup requires candidate and commit receipts"
+      basic_fail "0043 release startup requires candidate and commit receipts"
       exit 2
     fi
     CANDIDATE_RECEIPT="$3"
@@ -474,7 +474,7 @@ start_push_worker() {
 
 # A controlled commit/resume/rollback must recapture and finalize exact
 # database evidence before a queued push worker is allowed to mutate outbox
-# rows. Ordinary exact-0042 startup has no candidate digest to preserve.
+# rows. Ordinary exact-0043 startup has no candidate digest to preserve.
 if [[ "$RELEASE_START_KIND" == "normal" ]]; then
   start_push_worker
 fi

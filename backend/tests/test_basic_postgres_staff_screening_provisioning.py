@@ -370,7 +370,11 @@ def test_restricted_role_provisions_exactly_reviewed_educator(
     monkeypatch.setattr(
         staff_screening_vault,
         "scan_private_object",
-        lambda _path, _settings: SimpleNamespace(decision="clean"),
+        lambda _path, _settings: SimpleNamespace(
+            decision="clean",
+            scanner_engine="test-scanner",
+            scanner_version="1",
+        ),
     )
     certificate_expiry = _alberta_today() + timedelta(days=3650)
     monkeypatch.setattr(
@@ -616,7 +620,11 @@ def test_restricted_role_blocks_pathways_without_dedicated_staff_roles(
     monkeypatch.setattr(
         staff_screening_vault,
         "scan_private_object",
-        lambda _path, _settings: SimpleNamespace(decision="clean"),
+        lambda _path, _settings: SimpleNamespace(
+            decision="clean",
+            scanner_engine="test-scanner",
+            scanner_version="1",
+        ),
     )
     settings = _settings(tmp_path)
     application = create_app(settings)

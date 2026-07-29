@@ -2,7 +2,7 @@
 > **Retained-release commands supersede legacy instructions below (2026-07-26).**
 > The remainder of this document is preserved verbatim for product and audit
 > context. For the retained `0039_admissions_decision_spine` to
-> `0042_billing_policy_recert` release, do not execute any older startup,
+> `0043_org_wide_room_presence` release, do not execute any older startup,
 > migration, cutover, restore, or rollback command found below. The canonical
 > contract is `scripts/BASIC_RELEASE_CLI_CONTRACT.md`. Its current two-phase
 > operator flow is:
@@ -11,19 +11,19 @@
 > scripts/basic-release.sh prepare [--clone-port 55000..60999]
 > scripts/basic-release.sh commit \
 >   --receipt /absolute/private/run/candidate-receipt.json \
->   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0042"
+>   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0043"
 > ```
 >
 > Finalized emergency rollback requires the candidate, commit and finalization
 > receipts. Interrupted intent-only rollback supplies only the candidate receipt;
 > it omits both finalized-receipt flags and is accepted only when the run contains
 > its exact durable commit-attempt intent. Both use the exact confirmation phrase
-> `ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039`.
+> `ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039`.
 >
 
 # CareSync Rebuild — Thread Handoff
 
-Last updated: 2026-07-23 (America/Edmonton)
+Last updated: 2026-07-28 (America/Edmonton)
 
 This is the durable, sanitized continuation context for CareSync. It contains
 no passwords, tokens or API keys.
@@ -66,12 +66,12 @@ implemented until the ledger and audit explicitly say so.
 
 ## Current objective
 
-### Current verified source 0041/0042 checkpoint
+### Current verified source 0041–0043 checkpoint
 
 Checked-in source and `scripts/start-basic.sh` target
-`0042_billing_policy_recert`. Retained PostgreSQL 17 on port 5434 remains
-exactly at `0039_admissions_decision_spine`; no 0041 or 0042 retained migration
-or cutover occurred. Do not restart retained services through the 0042-pinned
+`0043_org_wide_room_presence`. Retained PostgreSQL 17 on port 5434 remains
+exactly at `0039_admissions_decision_spine`; no 0041 through 0043 retained
+migration or cutover occurred. Do not restart retained services through the 0043-pinned
 launcher until the guarded retained promotion is separately authorized and
 completed.
 
@@ -86,6 +86,12 @@ compliance.
 It accepts only exact whole profile A or the audited dump/restore profile B,
 rejects mixed/tampered/unknown catalogs and recreates all 36 canonical policies
 transactionally. It adds no billing product behavior or authority.
+
+0043 additively recertifies the 0041 room-presence start guard. A clocked-in
+owner or administrator may select any active room in the active shift facility
+without a room-scope assignment; all other roles still require an active
+assignment. Existing permission, shift, facility, tenant, provenance, overlap
+and immutability checks remain in force.
 
 The populated disposable clone preserved all 16,508 rows across 140 pre-0041
 business tables through `0041 -> 0039 -> 0042` and
@@ -1134,15 +1140,15 @@ remain required despite the green automated and runtime gates. The prior 0027
 signed-in browser evidence remains historical; the 0028 child-command operator
 walkthrough is still open.
 
-## 0041/0042 continuation override
+## 0041–0043 continuation override
 
 The detailed historical records below preserve dated evidence. Continue from
 these current facts:
 
 - retained port 5434 remains at `0039_admissions_decision_spine`; checked-in
-  source and the launcher target are `0042_billing_policy_recert`;
-- no 0041 or 0042 retained migration/cutover occurred, and retained services
-  must not be restarted through the 0042-pinned launcher until guarded
+  source and the launcher target are `0043_org_wide_room_presence`;
+- no 0041 through 0043 retained migration/cutover occurred, and retained services
+  must not be restarted through the 0043-pinned launcher until guarded
   promotion is authorized;
 - backup stem `caresync-postgres-20260723-052743-592770` captured exactly
   16,445 rows across 135 source tables at 0038; fresh port-56555 restore matched
@@ -1185,6 +1191,10 @@ these current facts:
   compliance claim;
 - verified 0042 accepts only exact whole billing-policy profiles A/B,
   canonicalizes all 36 frozen 0033 policies and adds no billing authority;
+- verified 0043 lets clocked-in owners and administrators select an active room
+  in their shift facility without room-scope assignment while preserving that
+  requirement for every other role and retaining the 0041 safety/provenance
+  boundary;
 - disposable migration preservation is 16,508 rows / 140 pre-0041 business
   tables, count digest
   `19376c0797dc5bf0613695b11448a3e16516c37751f694622773d55b8f8d62bd`,

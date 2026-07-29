@@ -774,7 +774,10 @@ def clock_in(
                 ),
                 conceal_detail="Facility not found",
             )
-            if existing.facility_id not in context.assigned_facility_ids:
+            if (
+                not context.organization_wide
+                and existing.facility_id not in context.assigned_facility_ids
+            ):
                 raise HTTPException(404, "Facility not found")
         shift = session.scalar(
             select(StaffShift).where(
@@ -811,7 +814,10 @@ def clock_in(
             required_all_permissions=("shift:clock", "care_roster:read"),
             conceal_detail="Facility not found",
         )
-        if facility.id not in context.assigned_facility_ids:
+        if (
+            not context.organization_wide
+            and facility.id not in context.assigned_facility_ids
+        ):
             raise HTTPException(404, "Facility not found")
     facility = _facility_for_clock(
         session,

@@ -12,7 +12,7 @@ readonly ocr_root="/opt/caresync/ocr"
 readonly ocr_versions_root="$ocr_root/venvs"
 readonly ocr_home="/var/lib/caresync/ocr-home"
 readonly maintenance_flag="/run/caresync-maintenance"
-readonly expected_revision="0042_billing_policy_recert"
+readonly expected_revision="0043_org_wide_room_presence"
 readonly maximum_archive_bytes=$((512 * 1024 * 1024))
 readonly service_name="caresync-api.service"
 readonly push_service_name="caresync-push-worker.service"
@@ -1337,7 +1337,7 @@ runuser -u postgres -- bash -c '
     DATABASE_READ_ONLY=false \
     CARESYNC_ALLOW_PROTECTED_LOCAL_ALEMBIC_TARGET=true \
     "$backend/.venv/bin/alembic" -c "$backend/alembic.ini" \
-      upgrade 0042_billing_policy_recert
+      upgrade 0043_org_wide_room_presence
 ' _ "$release_path/backend"
 
 runuser -u postgres -- psql \

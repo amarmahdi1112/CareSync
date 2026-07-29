@@ -2,7 +2,7 @@
 > **Retained-release commands supersede legacy instructions below (2026-07-26).**
 > The remainder of this document is preserved verbatim for product and audit
 > context. For the retained `0039_admissions_decision_spine` to
-> `0042_billing_policy_recert` release, do not execute any older startup,
+> `0043_org_wide_room_presence` release, do not execute any older startup,
 > migration, cutover, restore, or rollback command found below. The canonical
 > contract is `scripts/BASIC_RELEASE_CLI_CONTRACT.md`. Its current two-phase
 > operator flow is:
@@ -11,14 +11,14 @@
 > scripts/basic-release.sh prepare [--clone-port 55000..60999]
 > scripts/basic-release.sh commit \
 >   --receipt /absolute/private/run/candidate-receipt.json \
->   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0042"
+>   --confirm "COMMIT CARESYNC RETAINED 0039 TO 0043"
 > ```
 >
 > Finalized emergency rollback requires the candidate, commit and finalization
 > receipts. Interrupted intent-only rollback supplies only the candidate receipt;
 > it omits both finalized-receipt flags and is accepted only when the run contains
 > its exact durable commit-attempt intent. Both use the exact confirmation phrase
-> `ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039`.
+> `ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039`.
 >
 
 # CareSync MVP readiness audit
@@ -41,7 +41,7 @@ this document are completed and independently exercised.
 
 The retained port-5434 database remains at
 `0039_admissions_decision_spine`. The checked-in source and launcher now target
-verified-source `0042_billing_policy_recert`; no 0041 or 0042 retained cutover
+verified-source `0043_org_wide_room_presence`; no 0041 through 0043 retained cutover
 has occurred. The guarded 2026-07-23 retained 0039 promotion captured and
 exactly restored the 16,445-row / 135-table 0038 source, verified two
 zero-object evidence-vault restores with private receipts, and preserved all
@@ -59,8 +59,8 @@ MVP acceptance boundary.
 
 - The active Basic database is `caresync` in the isolated PostgreSQL 17 cluster
   on port `5434`, still at `0039_admissions_decision_spine`.
-- Checked-in source extends through `0041_live_room_presence` and
-  `0042_billing_policy_recert`; this source state is verified only on
+- Checked-in source extends through `0041_live_room_presence`,
+  `0042_billing_policy_recert` and `0043_org_wide_room_presence`; this source state is verified only on
   disposable databases and must not be described as the retained runtime.
 - The API runtime uses the restricted `caresync_basic_app` role. Migrations run
   separately as the local migration owner.
@@ -747,10 +747,10 @@ Complete boundaries and evidence are in
 `docs/PRODUCT_SLICE_0040_BILLING_READINESS_BATCH_PLANNER_RELEASE_NOTE.md`.
 The signed-in administrator browser-click walkthrough remains pending.
 
-## Verified `0041_live_room_presence` and `0042_billing_policy_recert` source
+## Verified 0041 through 0043 source
 
-0041 and 0042 are complete, verified source slices. Checked-in source and the
-launcher now target `0042_billing_policy_recert`; retained PostgreSQL 17 on port
+0041 through 0043 are complete, verified source slices. Checked-in source and the
+launcher now target `0043_org_wide_room_presence`; retained PostgreSQL 17 on port
 5434 remains exactly at `0039_admissions_decision_spine`. No retained
 migration, service restart through the new launcher or cutover occurred.
 
@@ -766,6 +766,12 @@ whole-catalog profile A or the audited PostgreSQL dump/restore profile B,
 rejects mixed/tampered/unknown catalogs, locks the protected relations and
 recreates exactly 36 canonical policies. Downgrade preserves the secure policy
 catalog. It activates no billing capability and adds no financial behavior.
+
+0043 additively recertifies the 0041 room-presence start guard. Clocked-in
+owners and administrators may select an active room in their shift facility
+without a room-scope assignment; other roles continue to require one. Existing
+permission, shift, facility, tenant, provenance, overlap and immutability checks
+remain in force.
 
 The populated PostgreSQL 17 clone preserved 16,508 rows across all 140
 pre-0041 business tables through both migration round trips. Exact identities

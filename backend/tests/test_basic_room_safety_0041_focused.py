@@ -339,6 +339,18 @@ def _start_in_room_one(world: World):
     )
 
 
+def _scope_as_educator(world: World) -> None:
+    world.role.key = "educator"
+    world.role.name = "Educator"
+    world.role.permissions = [
+        "facility:read",
+        "care_roster:read",
+        "shift:clock",
+    ]
+    world.session.flush()
+    assert world.context.organization_wide is False
+
+
 def test_capability_is_absent_before_0041_cutover_and_present_after_receipts(
     world: World,
 ) -> None:
@@ -424,6 +436,7 @@ def test_0041_schema_and_operational_copy_are_closed(world: World) -> None:
 def test_open_shift_without_eligible_room_still_requires_presence(
     world: World,
 ) -> None:
+    _scope_as_educator(world)
     world.assignment_one.is_active = False
     world.assignment_two.is_active = False
     world.session.flush()
@@ -433,6 +446,76 @@ def test_open_shift_without_eligible_room_still_requires_presence(
     assert projection.eligible_rooms == []
     assert projection.room_presence_required is True
     assert projection.decision_reason == "no_eligible_room"
+
+
+def test_organization_wide_presence_is_coherent_without_access_assignments(
+    world: World,
+) -> None:
+    world.assignment_one.is_active = False
+    world.assignment_two.is_active = False
+    world.session.flush()
+
+    roomless = staff_presence_projection(
+        world.session,
+        world.context,
+        generated_at=world.now,
+    )
+    assert roomless.current_presence is None
+    assert {value.id for value in roomless.eligible_rooms} == {
+        world.room_one.id,
+        world.room_two.id,
+    }
+    assert roomless.decision_reason == "room_selection_required"
+
+    started = create_clock_in_presence(
+        world.session,
+        world.context,
+        shift=world.shift,
+        operation_id=uuid4(),
+        scheduled_shift=None,
+        explicit_room_id=world.room_one.id,
+    )
+    assert started is not None
+    world.session.flush()
+    board = facility_live_board(
+        world.session,
+        organization_id=world.organization.id,
+        facility_id=world.facility.id,
+        as_of=_as_of(world),
+    )
+    room = next(
+        value for value in board.rooms if value.room_id == world.room_one.id
+    )
+    assert board.facility.open_shift_staff == 1
+    assert board.facility.located_staff == 1
+    assert board.facility.unlocated_staff == 0
+    assert "room_presence_source_incoherent" not in (
+        board.facility.data_quality_reason_codes
+    )
+    assert room.confirmed_staff == 1
+
+    reconcile_facility_exceptions(
+        world.session,
+        organization_id=world.organization.id,
+        facility_id=world.facility.id,
+        cause_entity_type="focused_test",
+        cause_entity_id=uuid4(),
+        notifications_suppressed=True,
+    )
+    world.session.flush()
+    assert (
+        world.session.scalar(
+            select(func.count(RoomOperationalExceptionHead.id)).where(
+                RoomOperationalExceptionHead.organization_id
+                == world.organization.id,
+                RoomOperationalExceptionHead.facility_id == world.facility.id,
+                RoomOperationalExceptionHead.condition_code
+                == "source_integrity_unknown",
+                RoomOperationalExceptionHead.state != "resolved",
+            )
+        )
+        == 0
+    )
 
 
 def test_inactive_shift_facility_fails_closed_and_retains_authorized_identity(
@@ -570,6 +653,7 @@ def test_invalid_shift_facility_timezone_is_nullable_only_on_unknown_board(
 def test_invalid_current_room_assignment_is_fail_visible_without_room_choices(
     world: World,
 ) -> None:
+    _scope_as_educator(world)
     started = _start_in_room_one(world)
     world.assignment_one.is_active = False
     world.session.flush()
@@ -863,6 +947,7 @@ def test_incoherent_present_day_fails_child_arithmetic_to_unknown(
 def test_staff_source_incoherence_makes_unconfigured_room_unknown(
     world: World,
 ) -> None:
+    _scope_as_educator(world)
     _start_in_room_one(world)
     world.assignment_one.is_active = False
     world.session.flush()
@@ -1054,6 +1139,7 @@ def test_incoherent_source_cannot_resolve_a_confirmed_capacity_episode(
 def test_acknowledged_source_improvement_keeps_episode_and_suppresses_new_wake(
     world: World,
 ) -> None:
+    _scope_as_educator(world)
     _start_in_room_one(world)
     world.assignment_one.is_active = False
     _add_present_child(world, room=world.room_one, with_interval=False)
@@ -1085,6 +1171,18 @@ def test_acknowledged_source_improvement_keeps_episode_and_suppresses_new_wake(
         "room_presence_source_incoherent",
     ]
 
+    # The scoped educator source above is the fact under test. A separate
+    # organization-wide manager authority is represented here before the
+    # acknowledgement command.
+    world.role.key = "owner"
+    world.role.name = "Owner"
+    world.role.permissions = [
+        "facility:read",
+        "care_roster:read",
+        "staff:manage_educators",
+        "shift:clock",
+    ]
+    world.session.flush()
     acknowledged = acknowledge_exception(
         world.session,
         world.context,

@@ -1004,7 +1004,25 @@ def test_runtime_api_missing_authority_head_rolls_back_and_same_operation_can_re
         ).one() == (3, 2, 2)
 
 
-def test_workspace_projection_writes_nothing_and_authority_is_role_and_tenant_private(
+def test_workspace_projection_requires_a2_activation(
+    postgres_harness: PostgresHarness,
+) -> None:
+    _, client = postgres_harness.admin, postgres_harness.client
+    _, headers = _register(client, "WorkspaceActivation")
+    family_id = UUID(_family(client, headers)["id"])
+
+    response = client.get(
+        f"/api/v1/families/{family_id}/authority",
+        headers=headers,
+    )
+
+    assert response.status_code == 503, response.text
+    assert response.json() == {
+        "detail": {"code": "family_authority_activation_unavailable"}
+    }
+
+
+def _assert_workspace_projection_writes_nothing_and_authority_is_role_and_tenant_private(
     postgres_harness: PostgresHarness,
 ) -> None:
     admin, client = postgres_harness.admin, postgres_harness.client
@@ -1296,7 +1314,7 @@ def _review_evidence(
     return response, payload
 
 
-def test_workspace_and_exact_replays_share_the_family_command_boundary(
+def _assert_workspace_and_exact_replays_share_the_family_command_boundary(
     postgres_harness: PostgresHarness,
 ) -> None:
     """A projection cannot straddle a concurrent person/evidence transition."""

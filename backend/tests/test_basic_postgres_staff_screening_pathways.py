@@ -197,7 +197,11 @@ def test_candidate_open_terms_apply_manager_scope_and_boundary_drift(
     monkeypatch.setattr(
         staff_screening_vault,
         "scan_private_object",
-        lambda _path, _settings: SimpleNamespace(decision="clean"),
+        lambda _path, _settings: SimpleNamespace(
+            decision="clean",
+            scanner_engine="test-scanner",
+            scanner_version="1",
+        ),
     )
     settings = _settings(tmp_path)
     database = Database(settings)

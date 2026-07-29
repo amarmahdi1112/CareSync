@@ -6,6 +6,9 @@ import re
 import subprocess
 from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = PROJECT_ROOT / "deploy" / "scripts" / "deploy-release.sh"
 ROLLBACK_SCRIPT = PROJECT_ROOT / "deploy" / "scripts" / "rollback-release.sh"
@@ -32,6 +35,29 @@ def test_production_deploy_script_has_valid_bash_syntax() -> None:
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_production_release_revision_matches_the_sole_alembic_head() -> None:
+    config = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
+    config.set_main_option(
+        "script_location",
+        str(PROJECT_ROOT / "backend" / "alembic"),
+    )
+    heads = ScriptDirectory.from_config(config).get_heads()
+    assert heads == ["0043_org_wide_room_presence"]
+    expected = heads[0]
+
+    build = (
+        PROJECT_ROOT / "deploy" / "scripts" / "build-release.sh"
+    ).read_text(encoding="utf-8")
+    validator = (
+        PROJECT_ROOT / "deploy" / "scripts" / "validate-release-archive.py"
+    ).read_text(encoding="utf-8")
+    deploy = DEPLOY_SCRIPT.read_text(encoding="utf-8")
+    assert f'"database_revision": "{expected}"' in build
+    assert f'EXPECTED_REVISION = "{expected}"' in validator
+    assert f'readonly expected_revision="{expected}"' in deploy
+    assert f"upgrade {expected}" in deploy
 
 
 def test_first_activation_requires_the_exact_provisioned_baseline_before_mutation() -> None:
@@ -234,7 +260,7 @@ def test_err_and_terminal_signals_arm_before_live_mutation() -> None:
     assert err_trap < int_trap < term_trap < hup_trap < mutation < clear
     assert "migration_started=1" in mutating_tail
     assert mutating_tail.index("migration_started=1") < mutating_tail.index(
-        "upgrade 0042_billing_policy_recert"
+        "upgrade 0043_org_wide_room_presence"
     )
     assert not re.search(r"(?m)^[ \t]*exit[ \t]+[0-9$]", mutating_tail)
     assert mutating_tail.count("fail_deployment_after_mutation 70") == 3

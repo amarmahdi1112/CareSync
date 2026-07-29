@@ -104,11 +104,17 @@ def _assert_runtime_identity() -> None:
         database.dispose()
 
 
-def test_runtime_baseline_is_terminal_and_migration_owner_can_reapply_grants() -> None:
+def test_runtime_baseline_requires_cluster_admin_for_terminal_repository_roles() -> None:
     _run_bootstrap()
     _assert_runtime_identity()
-    migration_result = _run_bootstrap(user=MIGRATION_USER)
-    assert migration_result.returncode == 0
+    migration_result = _run_bootstrap(user=MIGRATION_USER, check=False)
+    assert migration_result.returncode != 0
+    assert (
+        "0032 transport runtime provisioning requires SUPERUSER"
+        in migration_result.stderr
+    )
+    _run_bootstrap()
+    _assert_runtime_identity()
 
     engine = create_engine(_url("caresync_basic_app"))
     try:
@@ -211,7 +217,10 @@ def test_public_database_schema_column_sequence_and_function_drift_is_repaired()
                 "TO PUBLIC"
             )
 
-        with pytest.raises(RuntimeError, match="forbidden effective"):
+        with pytest.raises(
+            RuntimeError,
+            match="Partial or drifted 0032 transport command boundary",
+        ):
             _assert_runtime_identity()
         with runtime.connect() as connection:
             assert connection.execute(
@@ -323,7 +332,10 @@ def test_temp_and_guard_execute_drift_fail_closed_and_are_repaired() -> None:
                 "GRANT EXECUTE ON FUNCTION public.caresync_childcare_operation_guard() TO PUBLIC"
             )
 
-        with pytest.raises(RuntimeError, match="forbidden effective"):
+        with pytest.raises(
+            RuntimeError,
+            match="Partial or drifted 0032 transport command boundary",
+        ):
             _assert_runtime_identity()
 
         # A pooled runtime session with a temporary object is itself unsafe

@@ -85,7 +85,9 @@ def _register(client: TestClient, identifier: str) -> dict:
     return response.json()
 
 
-def _create_sleep_scenario(client: TestClient, headers: dict[str, str]) -> dict[str, str]:
+def _create_sleep_scenario(
+    client: TestClient, headers: dict[str, str]
+) -> tuple[dict[str, str], dict[str, str]]:
     timezone = ZoneInfo("America/Edmonton")
     now = datetime.now(timezone)
     service_date = now.date()
@@ -139,6 +141,17 @@ def _create_sleep_scenario(client: TestClient, headers: dict[str, str]) -> dict[
         },
     )
     assert room.status_code == 201, room.text
+    clocked_in = client.post(
+        "/api/v1/staff/self/shifts/clock-in",
+        headers=headers,
+        json={
+            "facility_id": facility_id,
+            "room_id": room.json()["id"],
+            "operation_id": str(uuid4()),
+        },
+    )
+    assert clocked_in.status_code == 201, clocked_in.text
+    assert clocked_in.json()["current_room_presence"]["room_id"] == room.json()["id"]
 
     family = client.post(
         "/api/v1/families",
@@ -221,19 +234,22 @@ def _create_sleep_scenario(client: TestClient, headers: dict[str, str]) -> dict[
     )
     assert finished.status_code == 200, finished.text
 
-    return {
-        "attendance_day_id": attendance_day["id"],
-        "attendance_interval_id": attendance_day["intervals"][0]["id"],
-        "care_record_id": finished.json()["id"],
-        "care_record_version": str(finished.json()["version"]),
-        "facility_id": facility_id,
-        "room_id": room.json()["id"],
-        "service_date": service_date.isoformat(),
-        "checked_in_at": local_time(8),
-        "care_started_at": local_time(9),
-        "care_corrected_end": local_time(12),
-        "attendance_corrected_end": local_time(11),
-    }
+    return (
+        {
+            "attendance_day_id": attendance_day["id"],
+            "attendance_interval_id": attendance_day["intervals"][0]["id"],
+            "care_record_id": finished.json()["id"],
+            "care_record_version": str(finished.json()["version"]),
+            "facility_id": facility_id,
+            "room_id": room.json()["id"],
+            "service_date": service_date.isoformat(),
+            "checked_in_at": local_time(8),
+            "care_started_at": local_time(9),
+            "care_corrected_end": local_time(12),
+            "attendance_corrected_end": local_time(11),
+        },
+        headers,
+    )
 
 
 def test_concurrent_exact_create_retries_return_one_canonical_record() -> None:
@@ -246,7 +262,7 @@ def test_concurrent_exact_create_retries_return_one_canonical_record() -> None:
     ):
         auth = _register(first_client, uuid4().hex)
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
-        scenario = _create_sleep_scenario(first_client, headers)
+        scenario, headers = _create_sleep_scenario(first_client, headers)
         operation_id = str(uuid4())
         payload = {
             "attendance_day_id": scenario["attendance_day_id"],
@@ -294,7 +310,7 @@ def test_sleep_correction_and_interval_correction_serialize_without_stranding_ca
         auth = _register(care_client, uuid4().hex)
         headers = {"Authorization": f"Bearer {auth['access_token']}"}
         organization_id = auth["user"]["organization_id"]
-        scenario = _create_sleep_scenario(care_client, headers)
+        scenario, headers = _create_sleep_scenario(care_client, headers)
         attendance_day_id = UUID(scenario["attendance_day_id"])
 
         care_reached_attendance = Event()

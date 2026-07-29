@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -497,6 +498,184 @@ def test_clock_http_requires_room_decision_and_terminal_input_is_private(
         )
         assert clock_out.status_code == 200, clock_out.text
         assert clock_out.json()["status"] == "closed"
+
+
+def test_organization_wide_actor_selects_physical_room_before_child_corrections(
+    tmp_path,
+) -> None:
+    client, application = _client(tmp_path)
+    with client:
+        owner = _register(client, "organization-wide-presence-owner")
+        headers = _headers(owner)
+        facility, rooms = _facility_tree(
+            client,
+            headers,
+            "OrganizationWidePresence",
+            room_count=2,
+        )
+        room = rooms[0]
+        local_today = datetime.now(ZoneInfo("America/Edmonton")).date()
+        family = client.post(
+            "/api/v1/families",
+            headers=headers,
+            json={
+                "client_operation_id": str(uuid4()),
+                "name": "Organization Wide Presence Family",
+            },
+        )
+        assert family.status_code == 201, family.text
+        child = client.post(
+            "/api/v1/children",
+            headers=headers,
+            json={
+                "client_operation_id": str(uuid4()),
+                "family_id": family.json()["id"],
+                "first_name": "Physical",
+                "last_name": "Presence",
+                "date_of_birth": "2023-01-01",
+            },
+        )
+        assert child.status_code == 201, child.text
+        enrollment = client.post(
+            f"/api/v1/children/{child.json()['id']}/enrollments",
+            headers=headers,
+            json={
+                "client_operation_id": str(uuid4()),
+                "facility_id": facility["id"],
+                "start_date": local_today.isoformat(),
+            },
+        )
+        assert enrollment.status_code == 201, enrollment.text
+        placement = client.post(
+            f"/api/v1/enrollments/{enrollment.json()['id']}/placement-approval",
+            headers=headers,
+            json={
+                "client_operation_id": str(uuid4()),
+                "expected_version": enrollment.json()["version"],
+                "room_id": room["id"],
+                "effective_date": local_today.isoformat(),
+            },
+        )
+        assert placement.status_code == 200, placement.text
+
+        application.state.live_room_presence_safety_board_foundation_enabled = (
+            True
+        )
+        now = datetime.now(UTC).replace(microsecond=0)
+        check_in_payload = {
+            "client_operation_id": str(uuid4()),
+            "child_id": child.json()["id"],
+            "facility_id": facility["id"],
+            "occurred_at": (now - timedelta(minutes=10)).isoformat(),
+        }
+        no_shift = client.post(
+            "/api/v1/attendance/check-in",
+            headers=headers,
+            json=check_in_payload,
+        )
+        assert no_shift.status_code == 409, no_shift.text
+        assert no_shift.json()["detail"]["code"] == "open_shift_required"
+
+        roomless_operation_id = str(uuid4())
+        roomless = client.post(
+            "/api/v1/staff/self/shifts/clock-in",
+            headers=headers,
+            json={
+                "facility_id": facility["id"],
+                "operation_id": roomless_operation_id,
+            },
+        )
+        assert roomless.status_code == 201, roomless.text
+        assert roomless.json()["current_room_presence"] is None
+        assert roomless.json()["room_presence_decision_reason"] == (
+            "room_selection_required"
+        )
+        assert {value["id"] for value in roomless.json()["eligible_rooms"]} == {
+            value["id"] for value in rooms
+        }
+        no_room = client.post(
+            "/api/v1/attendance/check-in",
+            headers=headers,
+            json={**check_in_payload, "client_operation_id": str(uuid4())},
+        )
+        assert no_room.status_code == 409, no_room.text
+        assert no_room.json()["detail"]["code"] == "room_presence_required"
+        roomless_clock_out = client.post(
+            "/api/v1/staff/self/shifts/clock-out",
+            headers=headers,
+            json={
+                "facility_id": facility["id"],
+                "operation_id": str(uuid4()),
+            },
+        )
+        assert roomless_clock_out.status_code == 200, roomless_clock_out.text
+
+        clocked_in = client.post(
+            "/api/v1/staff/self/shifts/clock-in",
+            headers=headers,
+            json={
+                "facility_id": facility["id"],
+                "room_id": room["id"],
+                "operation_id": str(uuid4()),
+            },
+        )
+        assert clocked_in.status_code == 201, clocked_in.text
+        assert clocked_in.json()["current_room_presence"]["room_id"] == room["id"]
+        with application.state.database.session_factory() as session:
+            assert (
+                session.scalar(
+                    select(MembershipRoomAssignment.id).where(
+                        MembershipRoomAssignment.organization_id
+                        == UUID(owner["user"]["organization_id"]),
+                        MembershipRoomAssignment.membership_id
+                        == UUID(owner["user"]["membership_id"]),
+                    )
+                )
+                is None
+            )
+
+        checked_in = client.post(
+            "/api/v1/attendance/check-in",
+            headers=headers,
+            json={**check_in_payload, "client_operation_id": str(uuid4())},
+        )
+        assert checked_in.status_code == 200, checked_in.text
+        care = client.post(
+            "/api/v1/care/records",
+            headers=headers,
+            json={
+                "attendance_day_id": checked_in.json()["id"],
+                "care_type": "mood",
+                "occurred_at": (now - timedelta(minutes=5)).isoformat(),
+                "payload": {"value": "calm"},
+                "client_operation_id": str(uuid4()),
+            },
+        )
+        assert care.status_code == 201, care.text
+        corrected_care = client.put(
+            f"/api/v1/care/records/{care.json()['id']}/correction",
+            headers=headers,
+            json={
+                "occurred_at": (now - timedelta(minutes=4)).isoformat(),
+                "payload": {"value": "happy"},
+                "note": "Corrected while physically present",
+                "reason": "Observed state was clarified",
+                "expected_version": care.json()["version"],
+                "client_operation_id": str(uuid4()),
+            },
+        )
+        assert corrected_care.status_code == 200, corrected_care.text
+        corrected_attendance = client.put(
+            f"/api/v1/attendance/{checked_in.json()['id']}/correction",
+            headers=headers,
+            json={
+                "interval_id": checked_in.json()["intervals"][0]["id"],
+                "checked_in_at": (now - timedelta(minutes=11)).isoformat(),
+                "checked_out_at": None,
+                "reason": "Corrected while physically present",
+            },
+        )
+        assert corrected_attendance.status_code == 200, corrected_attendance.text
 
 
 def test_staff_marker_keeps_roomless_open_shift_recoverable(

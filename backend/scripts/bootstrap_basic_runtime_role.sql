@@ -1,14 +1,17 @@
 \set ON_ERROR_STOP on
 
 -- Run only after the database reaches the exact revision approved by the
--- current release plan (locally, `0042_billing_policy_recert`). Never infer
+-- current release plan (locally, `0043_org_wide_room_presence`). Never infer
 -- that revision from the source-tree Alembic head. This script has two
 -- deliberately distinct authority phases:
 --   1. cluster-role provisioning/repair (SUPERUSER or CREATEROLE), and
 --   2. database/schema grants (object owner or SUPERUSER).
--- A migration owner may run phase 2 only when the cluster administrator has
--- already provisioned an exactly safe role. Any missing authority fails with a
--- specific message instead of leaving a partially trusted runtime identity.
+-- A migration owner may run phase 2 only on pre-0032 schemas, after the cluster
+-- administrator has already provisioned an exactly safe role. 0032 and later
+-- include terminal repository-owner roles and therefore require SUPERUSER so
+-- role repair and exact SECURITY DEFINER ownership remain atomic. Any missing
+-- authority fails with a specific message instead of leaving a partially
+-- trusted runtime identity.
 -- Password provisioning remains external to source control.
 SELECT pg_catalog.set_config('search_path', 'pg_catalog', false);
 
@@ -565,11 +568,12 @@ BEGIN
          SELECT 1 FROM public.alembic_version
          WHERE version_num IN (
            '0041_live_room_presence',
-           '0042_billing_policy_recert'
+           '0042_billing_policy_recert',
+           '0043_org_wide_room_presence'
          )
        ) THEN
         RAISE EXCEPTION
-          '0041 room-presence objects require exact Alembic revision 0041_live_room_presence or 0042_billing_policy_recert';
+          '0041 room-presence objects require exact Alembic revision 0041_live_room_presence, 0042_billing_policy_recert, or 0043_org_wide_room_presence';
     END IF;
 
     IF 4<>(
@@ -1306,7 +1310,12 @@ BEGIN
       SELECT 1
       FROM (VALUES
         ('caresync_0041_presence_row_guard()',
-         '7f3c407496dbae87792b7c805b5e45b8'),
+         CASE WHEN EXISTS (
+           SELECT 1 FROM public.alembic_version
+           WHERE version_num='0043_org_wide_room_presence'
+         ) THEN '7324cc1ec57481f779d8f7b8e5b8e841'
+           ELSE '7f3c407496dbae87792b7c805b5e45b8'
+         END),
         ('caresync_0041_event_immutable_guard()',
          'c0151b59c333111105787a1d98c8af7a'),
         ('caresync_0041_presence_event_guard()',
@@ -2007,7 +2016,7 @@ BEGIN
             'public.caresync_childcare_contact_retirement_guard()'
           ) IS NULL THEN
         RAISE EXCEPTION
-            'schema-grant repair requires revision 0028 guard functions; migrate to the exact reviewed revision 0042_billing_policy_recert first';
+            'schema-grant repair requires revision 0028 guard functions; migrate to the exact reviewed revision 0043_org_wide_room_presence first';
     END IF;
     IF pg_catalog.to_regclass('public.family_authority_people') IS NOT NULL
        AND (

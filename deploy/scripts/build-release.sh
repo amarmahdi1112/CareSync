@@ -190,7 +190,7 @@ manifest = {
     "schema": "caresync-release-v1",
     "application": "CareSync",
     "git_sha": os.environ["REVISION"],
-    "database_revision": "0042_billing_policy_recert",
+    "database_revision": "0043_org_wide_room_presence",
     "built_at": datetime.datetime.fromtimestamp(
         epoch, tz=datetime.timezone.utc
     ).isoformat().replace("+00:00", "Z"),

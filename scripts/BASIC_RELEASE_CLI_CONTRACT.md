@@ -3,7 +3,7 @@
 This staged shell is deliberately split from ordinary startup:
 
 - `start-basic.sh` never backs up, restores, bootstraps or migrates. Its normal
-  mode admits only exact `0042_billing_policy_recert`.
+  mode admits only exact `0043_org_wide_room_presence`.
 - `basic-release.sh prepare` is non-promoting. It requires exact
   `0039_admissions_decision_spine` and both certified runtime roles initially
   in their healthy `LOGIN` state, quiesces writers, fences the runtime by
@@ -15,8 +15,8 @@ This staged shell is deliberately split from ordinary startup:
   second fresh high-port clone, migrates and certifies that clone, writes a
   candidate receipt, and leaves the retained database fenced at 0039.
 - `basic-release.sh commit` reopens every artifact and requires the exact phrase
-  `COMMIT CARESYNC RETAINED 0039 TO 0042` before it migrates retained 0039,
-  bootstraps/certifies 0042, verifies the immutable commit receipt, removes the
+  `COMMIT CARESYNC RETAINED 0039 TO 0043` before it migrates retained 0039,
+  bootstraps/certifies 0043, verifies the immutable commit receipt, removes the
   fence and starts services.
 - `resume-basic-0039.sh` requires the exact phrase
   `RESUME CARESYNC RETAINED 0039 WITH THIS SOURCE`. It can resume only a fully
@@ -32,10 +32,14 @@ This staged shell is deliberately split from ordinary startup:
   candidate receipt, omits both finalized-receipt flags, and is admitted only
   when that run contains its exact durable commit-attempt intent. Both forms
   require the exact phrase
-  `ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039`, reopen every applicable
+  `ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039`, reopen every applicable
   artifact, quarantine the changed PGDATA without deletion, promote a
   separately verified same-APFS copy of the rehearsed exact-0039 physical
   backup, and resume it through a rollback-specific bounded runtime window.
+
+Commit recovery accepts `0042_billing_policy_recert` only as the literal,
+interrupted intermediate between the captured 0039 source and the exact 0043
+target. It does not turn 0042 into an ordinary startup target.
 
 Operator entry points:
 
@@ -44,7 +48,7 @@ scripts/basic-release.sh prepare [--clone-port 55000..60999]
 
 scripts/basic-release.sh commit \
   --receipt /absolute/private/run/candidate-receipt.json \
-  --confirm "COMMIT CARESYNC RETAINED 0039 TO 0042"
+  --confirm "COMMIT CARESYNC RETAINED 0039 TO 0043"
 
 scripts/resume-basic-0039.sh \
   --receipt /absolute/private/run/candidate-receipt.json \
@@ -54,11 +58,11 @@ scripts/basic-release.sh rollback \
   --receipt /absolute/private/run/candidate-receipt.json \
   --commit-receipt /absolute/private/run/commit-receipt.json \
   --finalization-receipt /absolute/private/run/finalization-receipt.json \
-  --confirm "ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039"
+  --confirm "ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039"
 
 scripts/basic-release.sh rollback \
   --receipt /absolute/private/run/candidate-receipt.json \
-  --confirm "ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039"
+  --confirm "ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039"
 ```
 
 The first rollback invocation is the finalized form. The second is the
@@ -233,7 +237,7 @@ release_source_manifest_sha256=<64 lowercase hexadecimal characters>
 app_prior_login=<login|nologin>
 ingest_prior_login=<login|nologin>
 source_revision=0039_admissions_decision_spine
-target_revision=0042_billing_policy_recert
+target_revision=0043_org_wide_room_presence
 ```
 
 The exact paths, source-manifest digest, source/target revisions and prior
@@ -275,7 +279,7 @@ path. Its contract is:
      durable commit-attempt intent.
 
    Both shapes require the exact operator phrase
-   `ROLL BACK CARESYNC RETAINED 0042 TO CAPTURED 0039`. Reopen every applicable
+   `ROLL BACK CARESYNC RETAINED 0043 TO CAPTURED 0039`. Reopen every applicable
    bound artifact before changing live state. A mixed or partial evidence
    shape fails closed.
 2. Re-attest the pinned retained PostgreSQL system identifier and canonical
@@ -329,13 +333,20 @@ path. Its contract is:
    identity/readiness. The full evidence and byte chain is then reopened
    before startup completion resumes. This is not an ordinary or
    unauthenticated 0039 startup path.
-9. Retain the physical evidence, rehearsal receipt and quarantined 0042
+9. Retain the physical evidence, rehearsal receipt and quarantined target
    directory until a separate operator-approved retention action.
 
 This recovery path never invokes `alembic downgrade`, never deletes either
 cluster, never restores onto a running PostgreSQL directory, and never targets
-ports 5432, 5433 or 5434 during rehearsal. The quarantined 0042 cluster and all
+ports 5432, 5433 or 5434 during rehearsal. The quarantined target cluster and all
 release evidence remain until a separate, explicit retention decision.
+
+Sealed evidence filenames, directory components, status values and verifier
+identifiers that contain `0042` are frozen format identifiers from the original
+rollback protocol. Examples include `rollback-stopped-0042.evidence` and
+`status=stopped_retained_0042`. They remain byte-for-byte stable when the
+release target advances to 0043 and must not be interpreted as the live target
+revision.
 
 Both normal startup and release preparation perform local dependency,
 runtime-file, vault-root and secret/key checks before they quiesce a healthy

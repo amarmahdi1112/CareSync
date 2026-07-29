@@ -310,16 +310,11 @@ def _eligible_rooms(
     *,
     organization_id: UUID,
     membership_id: UUID,
+    organization_wide: bool = False,
     facility_id: UUID | None = None,
 ) -> list[Room]:
     statement = (
         select(Room)
-        .join(
-            MembershipRoomAssignment,
-            (MembershipRoomAssignment.organization_id == Room.organization_id)
-            & (MembershipRoomAssignment.facility_id == Room.facility_id)
-            & (MembershipRoomAssignment.room_id == Room.id),
-        )
         .join(
             Facility,
             (Facility.organization_id == Room.organization_id)
@@ -327,13 +322,21 @@ def _eligible_rooms(
         )
         .where(
             Room.organization_id == organization_id,
-            MembershipRoomAssignment.membership_id == membership_id,
-            MembershipRoomAssignment.is_active.is_(True),
             Room.is_active.is_(True),
             Facility.status == "active",
         )
         .order_by(Room.name, Room.id)
     )
+    if not organization_wide:
+        statement = statement.join(
+            MembershipRoomAssignment,
+            (MembershipRoomAssignment.organization_id == Room.organization_id)
+            & (MembershipRoomAssignment.facility_id == Room.facility_id)
+            & (MembershipRoomAssignment.room_id == Room.id),
+        ).where(
+            MembershipRoomAssignment.membership_id == membership_id,
+            MembershipRoomAssignment.is_active.is_(True),
+        )
     if facility_id is not None:
         statement = statement.where(Room.facility_id == facility_id)
     return list(session.scalars(statement))
@@ -521,6 +524,7 @@ def staff_presence_projection(
             session,
             organization_id=context.organization.id,
             membership_id=context.membership.id,
+            organization_wide=context.organization_wide,
             facility_id=facility_id,
         )
         if shift is not None and shift_source_valid
@@ -595,17 +599,12 @@ def _room_assignment(
     *,
     organization_id: UUID,
     membership_id: UUID,
+    organization_wide: bool = False,
     facility_id: UUID,
     room_id: UUID,
 ) -> Room:
-    room = session.scalar(
+    statement = (
         select(Room)
-        .join(
-            MembershipRoomAssignment,
-            (MembershipRoomAssignment.organization_id == Room.organization_id)
-            & (MembershipRoomAssignment.facility_id == Room.facility_id)
-            & (MembershipRoomAssignment.room_id == Room.id),
-        )
         .join(
             Facility,
             (Facility.organization_id == Room.organization_id)
@@ -617,10 +616,19 @@ def _room_assignment(
             Room.id == room_id,
             Room.is_active.is_(True),
             Facility.status == "active",
+        )
+    )
+    if not organization_wide:
+        statement = statement.join(
+            MembershipRoomAssignment,
+            (MembershipRoomAssignment.organization_id == Room.organization_id)
+            & (MembershipRoomAssignment.facility_id == Room.facility_id)
+            & (MembershipRoomAssignment.room_id == Room.id),
+        ).where(
             MembershipRoomAssignment.membership_id == membership_id,
             MembershipRoomAssignment.is_active.is_(True),
         )
-    )
+    room = session.scalar(statement)
     if room is None:
         raise HTTPException(
             409,
@@ -894,8 +902,9 @@ def _refresh_self_presence_context(
         required_all_permissions=("shift:clock", "care_roster:read"),
         conceal_detail="Room presence resource not found",
     )
-    if facility_id not in current.assigned_facility_ids or (
-        room_id is not None and room_id not in current.assigned_room_ids
+    if not current.organization_wide and (
+        facility_id not in current.assigned_facility_ids
+        or (room_id is not None and room_id not in current.assigned_room_ids)
     ):
         raise HTTPException(404, "Room presence resource not found")
     return current
@@ -1014,6 +1023,7 @@ def start_presence(
         session,
         organization_id=context.organization.id,
         membership_id=context.membership.id,
+        organization_wide=context.organization_wide,
         facility_id=facility_id,
         room_id=room_id,
     )
@@ -1228,6 +1238,7 @@ def move_presence(
         session,
         organization_id=context.organization.id,
         membership_id=context.membership.id,
+        organization_wide=context.organization_wide,
         facility_id=current.facility_id,
         room_id=destination_room_id,
     )
@@ -1520,6 +1531,7 @@ def create_clock_in_presence(
         session,
         organization_id=context.organization.id,
         membership_id=context.membership.id,
+        organization_wide=context.organization_wide,
         facility_id=shift.facility_id,
     )
     eligible_by_id = {room.id: room for room in eligible}
@@ -2049,14 +2061,25 @@ def facility_live_board(
     membership_ids = {
         value.membership_id for value in presences
     } | {value.membership_id for value in shifts}
-    memberships = {
-        value.id: value
-        for value in session.scalars(
-            select(OrganizationMembership).where(
+    membership_rows = list(
+        session.execute(
+            select(OrganizationMembership, Role)
+            .join(
+                Role,
+                (Role.organization_id == OrganizationMembership.organization_id)
+                & (Role.id == OrganizationMembership.role_id),
+            )
+            .where(
                 OrganizationMembership.organization_id == organization_id,
                 OrganizationMembership.id.in_(membership_ids or {UUID(int=0)}),
             )
         )
+    )
+    memberships = {membership.id: membership for membership, _role in membership_rows}
+    organization_wide_memberships = {
+        membership.id
+        for membership, role in membership_rows
+        if role.key in {"owner", "administrator"}
     }
     assignments = {
         (value.membership_id, value.room_id)
@@ -2087,7 +2110,10 @@ def facility_live_board(
             and value.room_id in room_by_id
             and membership is not None
             and membership.status == "active"
-            and (value.membership_id, value.room_id) in assignments
+            and (
+                value.membership_id in organization_wide_memberships
+                or (value.membership_id, value.room_id) in assignments
+            )
             and value.membership_id not in seen_memberships
         )
         if not valid:

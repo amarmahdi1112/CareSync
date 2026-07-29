@@ -90,13 +90,13 @@ def test_runtime_role_bootstrap_mentions_every_basic_sequence() -> None:
     assert not missing, f"Basic sequences missing from runtime-role bootstrap: {sorted(missing)}"
 
 
-def test_runtime_role_bootstrap_requires_the_reviewed_local_release() -> None:
+def test_runtime_role_bootstrap_requires_the_reviewed_schema_release() -> None:
     sql = (BACKEND_ROOT / "scripts" / "bootstrap_basic_runtime_role.sql").read_text()
     assert "alembic upgrade head" not in sql
-    assert "exact reviewed revision 0042_billing_policy_recert" in sql
+    assert "exact reviewed revision 0043_org_wide_room_presence" in sql
 
 
-def test_0042_local_release_wiring_is_pinned_but_never_auto_activated() -> None:
+def test_0043_local_release_wiring_is_pinned_but_never_auto_activated() -> None:
     project_root = BACKEND_ROOT.parent
     launcher = (project_root / "scripts" / "start-basic.sh").read_text(
         encoding="utf-8"
@@ -108,11 +108,17 @@ def test_0042_local_release_wiring_is_pinned_but_never_auto_activated() -> None:
         encoding="utf-8"
     )
     assert (
-        'CARESYNC_RETAINED_TARGET_REVISION="0042_billing_policy_recert"'
+        'CARESYNC_RETAINED_INTERMEDIATE_REVISION="0042_billing_policy_recert"'
+        in runtime
+    )
+    assert (
+        'CARESYNC_RETAINED_TARGET_REVISION="0043_org_wide_room_presence"'
         in runtime
     )
     assert 'EXPECTED_REVISION="$CARESYNC_RETAINED_TARGET_REVISION"' in launcher
+    assert "--commit-0043" in launcher
     assert 'alembic upgrade "$CARESYNC_RETAINED_TARGET_REVISION"' in release
+    assert '"$CARESYNC_RETAINED_INTERMEDIATE_REVISION"' in release
     assert "alembic upgrade" not in launcher
     assert "room_safety.release_reconciliation" not in launcher
     assert "release-reconciliation" not in launcher
@@ -133,6 +139,7 @@ def test_0041_bootstrap_preflights_catalog_before_role_or_acl_mutation() -> None
     assert "RETURN;" in preflight  # capability-gated pre-0041 path
     assert "0041_live_room_presence" in preflight
     assert "0042_billing_policy_recert" in preflight
+    assert "0043_org_wide_room_presence" in preflight
     assert "version_num IN (" in preflight
     assert "65<>(" in preflight
     assert "42<>(" in preflight
@@ -166,6 +173,14 @@ def test_0041_runtime_gate_uses_the_installed_trusted_revision_graph() -> None:
     assert _revision_descends_from(
         "0042_billing_policy_recert",
         "0041_live_room_presence",
+    )
+    assert _revision_descends_from(
+        "0043_org_wide_room_presence",
+        "0041_live_room_presence",
+    )
+    assert _revision_descends_from(
+        "0043_org_wide_room_presence",
+        "0042_billing_policy_recert",
     )
     assert not _revision_descends_from(
         "0039_admissions_decision_spine",

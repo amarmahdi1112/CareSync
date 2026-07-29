@@ -35,7 +35,7 @@ Usage:
     --confirm "$CARESYNC_RELEASE_ROLLBACK_PHRASE"
 
 prepare is non-promoting: it leaves the retained runtime fenced at exact 0039.
-commit consumes that immutable receipt and is the only retained 0039-to-0042
+commit consumes that immutable receipt and is the only retained 0039-to-0043
 migration path. Recovery at unchanged 0039 uses scripts/resume-basic-0039.sh.
 The first rollback form is for a finalized commit and requires both finalized
 receipts. The second is intent-only recovery after an interrupted commit: omit
@@ -3447,6 +3447,9 @@ finish_active_rollback_invalidation_if_present() {
   ACTIVE_INVALIDATION_FINISHED=true
 }
 
+# The 0042 token in these function, file, and status names is a frozen v1
+# evidence-format identifier. Keep it stable while its revision field follows
+# the configured retained target.
 create_stopped_0042_evidence() {
   local run_directory="$1"
   local candidate_receipt="$2"
@@ -3952,11 +3955,12 @@ require_interrupted_commit_live_revision() {
   case "$revision" in
     "$CARESYNC_RETAINED_SOURCE_REVISION"|\
 0041_live_room_presence|\
+"$CARESYNC_RETAINED_INTERMEDIATE_REVISION"|\
 "$CARESYNC_RETAINED_TARGET_REVISION")
       ;;
     *)
       basic_fail \
-        "Interrupted commit recovery found a revision outside the 0039-to-0042 path"
+        "Interrupted commit recovery found a revision outside the 0039-to-0043 path"
       return
       ;;
   esac
@@ -4834,7 +4838,7 @@ prepare_release() {
   # The restore receipt proves the populated clone at exact 0039. Migrate that
   # disposable database in its own Alembic transaction, rebuild the restricted
   # runtime boundary there, and only then ask the read-only contract helper to
-  # issue the 0042 clone certificate. Complete row evidence is collected in a
+  # issue the 0043 clone certificate. Complete row evidence is collected in a
   # read-only transaction by the migration maintenance identity, which can see
   # every FORCE RLS row. The helper's separate runtime hook still connects only
   # through the opened NOBYPASSRLS release probe below.
@@ -5009,7 +5013,8 @@ commit_release() {
 
   local current_revision
   current_revision="$(basic_current_revision)" || return
-  if [[ "$current_revision" == "$CARESYNC_RETAINED_SOURCE_REVISION" ]]; then
+  if [[ "$current_revision" == "$CARESYNC_RETAINED_SOURCE_REVISION" ]] || \
+     [[ "$current_revision" == "$CARESYNC_RETAINED_INTERMEDIATE_REVISION" ]]; then
     (
       cd "$RELEASE_EXECUTION_ROOT/backend"
       CARESYNC_VENV_PATH="$VENV_PATH" \
@@ -5027,7 +5032,8 @@ commit_release() {
           "$CARESYNC_RETAINED_TARGET_REVISION"
     ) || return
   elif [[ "$current_revision" != "$CARESYNC_RETAINED_TARGET_REVISION" ]]; then
-    basic_fail "Commit recovery accepts only exact 0039 or already-migrated exact 0042"
+    basic_fail \
+      "Commit recovery accepts only exact 0039, interrupted exact 0042, or already-migrated exact 0043"
     return
   fi
   basic_require_exact_revision "$CARESYNC_RETAINED_TARGET_REVISION" || return
@@ -5086,7 +5092,7 @@ commit_release() {
     "$RELEASE_PROBE_CREDENTIAL" || return
   if ! CARESYNC_INSTALLED_DEPENDENCY_ROOT="${CARESYNC_INSTALLED_DEPENDENCY_ROOT:-$ROOT}" \
     /bin/bash "$RELEASE_EXECUTION_ROOT/scripts/start-basic.sh" \
-    --commit-0042 \
+    --commit-0043 \
     --receipt "$candidate_receipt" \
     --commit-receipt "$COMMIT_RECEIPT"; then
     if [[ -e "$RELEASE_FENCE_DIRECTORY" ]] || \
@@ -5404,6 +5410,7 @@ rollback_release() {
   if [[ "$pre_finalization_rollback" == "true" ]]; then
     quarantine_directory="$quarantine_parent/postgres-data-interrupted-commit-$run_key"
   else
+    # This basename is part of the frozen rollback evidence format.
     quarantine_directory="$quarantine_parent/postgres-data-0042-$run_key"
   fi
   local partial_directory="$RUNTIME_DIR/.postgres-data-rollback-$run_key"
@@ -5509,8 +5516,8 @@ rollback_release() {
   # writer states and retired the fence but before start-basic finishes its
   # deferred push step. Only this run's exact private `rollback_starting`
   # context may be atomically moved back into the active fence. The ordinary
-  # no-fence branch still accepts only live 0042, so this is not a general
-  # unauthenticated exact-0039 startup path.
+  # no-fence branch still accepts only the configured live target, so this is
+  # not a general unauthenticated exact-0039 startup path.
   local rollback_reentry_guard_armed=false
   local rollback_was_reactivated=false
   if [[ ! -e "$RELEASE_FENCE_DIRECTORY" ]] && \

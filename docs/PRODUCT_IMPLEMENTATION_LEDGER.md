@@ -1,6 +1,6 @@
 # CareSync Product Implementation Ledger
 
-Last updated: 2026-07-23
+Last updated: 2026-07-28
 
 ## Purpose
 
@@ -40,14 +40,15 @@ records sequence and completion state.
 | `0039_admissions_decision_spine` | Administrator admissions lifecycle, deterministic waitlist, offers and duplicate-safe canonical conversion | Complete retained command/RLS/recovery boundary | Complete pipeline, detail, exact recovery and conversion review | Not applicable in this bounded slice | **Released local; retained head 0039** |
 | `0040_billing_readiness_batch_planner` | Read-only setup planning plus explicitly reviewed reuse of canonical billing commands | Complete verified source/API boundary; no migration | Complete source; signed-in browser-click walkthrough pending | Not applicable | **Verified product slice; retained head and release pin remain 0039; no activation, invoice, payment, provider or funding behavior** |
 | `0041_live_room_presence` | Server-confirmed staff room presence and factual operational configured-target room board | Complete source, migration, exact-retry, RLS/recovery and disposable PostgreSQL boundary | Strict board, exception and recovery surfaces complete; signed-in walkthrough pending | Strict current-room, move/end and child-operation gate complete; physical walkthrough pending | **Verified source; retained PostgreSQL 5434 remains at 0039** |
-| `0042_billing_policy_recert` | Exact recertification of the frozen 0033 PostgreSQL billing-policy catalog | Complete whole-catalog A/B certificate and transactional 36-policy canonicalization | No new product UI; existing regression green | No new product UI; existing regression green | **Verified source integrity repair; checked-in launcher target 0042, retained PostgreSQL 5434 remains at 0039** |
+| `0042_billing_policy_recert` | Exact recertification of the frozen 0033 PostgreSQL billing-policy catalog | Complete whole-catalog A/B certificate and transactional 36-policy canonicalization | No new product UI; existing regression green | No new product UI; existing regression green | **Verified source integrity repair; ancestor of target 0043, retained PostgreSQL 5434 remains at 0039** |
+| `0043_org_wide_room_presence` | Organization-wide owner/administrator access to active rooms while clocked in | Additive recertification of the 0041 start guard; all non-leader assignment and existing provenance checks remain | Existing room-selection workflow; no new authority surface | Existing room-selection workflow; no new authority surface | **Verified source; checked-in launcher target 0043, retained PostgreSQL 5434 remains at 0039** |
 
-## Verified 0041 and 0042 source train
+## Verified 0041 through 0043 source train
 
 Checked-in source and `scripts/start-basic.sh` now target
-`0042_billing_policy_recert`. This is not the retained runtime state. The
+`0043_org_wide_room_presence`. This is not the retained runtime state. The
 retained PostgreSQL 17 database on port 5434 remains exactly at
-`0039_admissions_decision_spine`; no 0041 or 0042 retained cutover was
+`0039_admissions_decision_spine`; no 0041 through 0043 retained cutover was
 performed.
 
 `0041_live_room_presence` adds the server-confirmed current-room fact for an
@@ -64,6 +65,13 @@ exact canonical profile A or audited PostgreSQL dump/restore profile B for all
 transactionally recreates the canonical definitions under relation locks and
 requires profile A at postflight. Downgrade preserves the secure policy
 catalog. It creates no billing capability, activation or financial behavior.
+
+`0043_org_wide_room_presence` additively recertifies the 0041 start guard.
+Clocked-in owners and administrators may select any active room in their active
+shift facility without receiving a room-scope assignment. Other roles still
+require an active assignment, and the existing permission, shift, facility,
+tenant, provenance, overlap and immutability checks remain in force. It adds no
+transport, ratio or regulatory-compliance authority.
 
 The populated disposable proof preserved 16,508 rows across all 140 pre-0041
 business tables through `0041 -> 0039 -> 0042` and

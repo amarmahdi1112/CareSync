@@ -23,6 +23,7 @@ from app.api.basic import attendance as attendance_api
 from app.api.basic import organization as organization_api
 from app.core.config import Settings
 from app.main import create_app
+from tests.postgres_staff_shift_fixture import clock_in_assigned_educator
 
 TEST_PORT = os.getenv("BASIC_POSTGRES_TEST_PORT")
 if TEST_PORT and int(TEST_PORT) in {5432, 5433, 5434}:
@@ -71,7 +72,7 @@ def _application(settings: Settings):
 
 def _create_scenario(
     client: TestClient, *, end_enrollment: bool = False
-) -> tuple[dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
     identifier = uuid4().hex
     auth = client.post(
         "/api/v1/auth/register",
@@ -180,6 +181,12 @@ def _create_scenario(
             },
         )
         assert ended.status_code == 200, ended.text
+    staff_headers = clock_in_assigned_educator(
+        client,
+        headers,
+        facility_id=facility.json()["id"],
+        room_id=room.json()["id"],
+    )
     scenario = {
         "facility_id": facility.json()["id"],
         "room_id": room.json()["id"],
@@ -187,7 +194,7 @@ def _create_scenario(
         "child_id": child.json()["id"],
         "occurred_at": (datetime.now(timezone) - timedelta(seconds=1)).isoformat(),
     }
-    return headers, scenario
+    return headers, staff_headers, scenario
 
 
 def _check_in(
@@ -244,7 +251,7 @@ def test_check_in_lock_wins_and_room_deactivation_observes_open_interval(
         TestClient(attendance_application, raise_server_exceptions=False) as attendance_client,
         TestClient(organization_application, raise_server_exceptions=False) as organization_client,
     ):
-        headers, scenario = _create_scenario(attendance_client)
+        owner_headers, staff_headers, scenario = _create_scenario(attendance_client)
         check_in_holds_facility_lock = Event()
         allow_check_in_commit = Event()
         deactivation_reached_impact = Event()
@@ -272,13 +279,13 @@ def test_check_in_lock_wins_and_room_deactivation_observes_open_interval(
         failures: dict[str, Exception] = {}
         check_in_thread = Thread(
             target=_check_in,
-            args=(attendance_client, headers, scenario, responses, failures),
+            args=(attendance_client, staff_headers, scenario, responses, failures),
             name="room-race-check-in-first",
             daemon=True,
         )
         deactivation_thread = Thread(
             target=_deactivate_room,
-            args=(organization_client, headers, scenario, responses, failures),
+            args=(organization_client, owner_headers, scenario, responses, failures),
             name="room-race-deactivation-second",
             daemon=True,
         )
@@ -316,13 +323,13 @@ def test_check_in_lock_wins_and_room_deactivation_observes_open_interval(
         assert "open attendance intervals" in deactivation_response.json()["detail"]
         room = attendance_client.get(
             f"/api/v1/rooms/{scenario['room_id']}",
-            headers=headers,
+            headers=owner_headers,
         )
         assert room.status_code == 200, room.text
         assert room.json()["is_active"] is True
 
 
-def test_room_deactivation_lock_wins_and_check_in_fails_closed(
+def test_open_staff_presence_blocks_deactivation_and_waiting_check_in_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _settings()
@@ -333,7 +340,7 @@ def test_room_deactivation_lock_wins_and_check_in_fails_closed(
         TestClient(attendance_application, raise_server_exceptions=False) as attendance_client,
         TestClient(organization_application, raise_server_exceptions=False) as organization_client,
     ):
-        headers, scenario = _create_scenario(
+        owner_headers, staff_headers, scenario = _create_scenario(
             organization_client,
             end_enrollment=True,
         )
@@ -364,13 +371,13 @@ def test_room_deactivation_lock_wins_and_check_in_fails_closed(
         failures: dict[str, Exception] = {}
         deactivation_thread = Thread(
             target=_deactivate_room,
-            args=(organization_client, headers, scenario, responses, failures),
+            args=(organization_client, owner_headers, scenario, responses, failures),
             name="room-race-deactivation-first",
             daemon=True,
         )
         check_in_thread = Thread(
             target=_check_in,
-            args=(attendance_client, headers, scenario, responses, failures),
+            args=(attendance_client, staff_headers, scenario, responses, failures),
             name="room-race-check-in-second",
             daemon=True,
         )
@@ -403,16 +410,24 @@ def test_room_deactivation_lock_wins_and_check_in_fails_closed(
         assert set(responses) == {"check_in", "deactivation"}, responses
         check_in_response = responses["check_in"]
         deactivation_response = responses["deactivation"]
-        assert deactivation_response.status_code == 200, deactivation_response.text
-        assert deactivation_response.json()["is_active"] is False
+        assert deactivation_response.status_code == 409, deactivation_response.text
+        assert "1 open staff room presences" in deactivation_response.json()["detail"]
         assert check_in_response.status_code == 409, check_in_response.text
         assert check_in_response.json()["detail"] == (
             "Child has no active enrollment at this facility on the service date"
         )
 
+        room = organization_client.get(
+            f"/api/v1/rooms/{scenario['room_id']}",
+            headers=owner_headers,
+        )
+        assert room.status_code == 200, room.text
+        assert room.json()["is_active"] is True
+
         impact = organization_client.get(
             f"/api/v1/rooms/{scenario['room_id']}/deactivation-impact",
-            headers=headers,
+            headers=owner_headers,
         )
         assert impact.status_code == 200, impact.text
         assert impact.json()["open_attendance_intervals"] == 0
+        assert impact.json()["open_staff_room_presences"] == 1
