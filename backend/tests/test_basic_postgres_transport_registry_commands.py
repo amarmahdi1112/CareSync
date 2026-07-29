@@ -38,6 +38,7 @@ DATABASE_NAME = "caresync"
 BASIC_ROLE = "caresync_basic_app"
 EVIDENCE_ROLE = "caresync_transport_evidence_ingest"
 COMMAND_OWNER_ROLE = "caresync_transport_command_owner"
+CURRENT_REVISION = "0032_transport_commands"
 PROTECTED_PORTS = {5432, 5433, 5434}
 WRITER_SIGNATURE = "caresync_0032_execute_command(text,uuid,text,jsonb)"
 EVIDENCE_COMMANDS = {"qualification_evidence", "vehicle_evidence"}
@@ -1190,11 +1191,13 @@ def test_postgres_17_transport_commands_are_atomic_scoped_and_fail_closed() -> N
         with database_admin.begin() as connection:
             connection.execute(text("REVOKE CREATE ON SCHEMA public FROM PUBLIC"))
 
-        migration = _alembic("upgrade", "head")
+        # This is a frozen 0032 certification. Repository head can advance
+        # without changing the schema boundary this proof is responsible for.
+        migration = _alembic("upgrade", CURRENT_REVISION)
         assert migration.returncode == 0, migration.stdout + migration.stderr
         with database_admin.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0032_transport_commands"
+                CURRENT_REVISION
             )
             fresh_0031_guard_definitions = _postgres_function_definitions(
                 connection,
@@ -1239,7 +1242,7 @@ def test_postgres_17_transport_commands_are_atomic_scoped_and_fail_closed() -> N
                 compatibility_ids,
             )
 
-        refused_blank_plate = _alembic("upgrade", "head")
+        refused_blank_plate = _alembic("upgrade", CURRENT_REVISION)
         assert refused_blank_plate.returncode != 0
         assert "active vehicle has an empty normalized plate" in (
             refused_blank_plate.stdout + refused_blank_plate.stderr
@@ -1267,7 +1270,7 @@ def test_postgres_17_transport_commands_are_atomic_scoped_and_fail_closed() -> N
                 actor_id=compatibility_ids["manager_a"],
             )
 
-        refused_duplicate_plate = _alembic("upgrade", "head")
+        refused_duplicate_plate = _alembic("upgrade", CURRENT_REVISION)
         assert refused_duplicate_plate.returncode != 0
         assert "duplicate normalized active vehicle plate" in (
             refused_duplicate_plate.stdout + refused_duplicate_plate.stderr
@@ -1288,11 +1291,11 @@ def test_postgres_17_transport_commands_are_atomic_scoped_and_fail_closed() -> N
                 vehicle_id=legacy_vehicles["duplicate_a"],
                 actor_id=compatibility_ids["manager_a"],
             )
-        empty_reupgrade = _alembic("upgrade", "head")
+        empty_reupgrade = _alembic("upgrade", CURRENT_REVISION)
         assert empty_reupgrade.returncode == 0, empty_reupgrade.stdout + empty_reupgrade.stderr
         with database_admin.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0032_transport_commands"
+                CURRENT_REVISION
             )
             assert (
                 _postgres_function_definitions(connection, HARDENED_0031_GUARDS)
@@ -2518,7 +2521,7 @@ def test_postgres_17_transport_commands_are_atomic_scoped_and_fail_closed() -> N
         assert "downgrade refused" in (downgrade.stdout + downgrade.stderr).lower()
         with database_admin.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0032_transport_commands"
+                CURRENT_REVISION
             )
     finally:
         if evidence_ingest is not None:

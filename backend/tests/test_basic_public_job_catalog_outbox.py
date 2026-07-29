@@ -52,6 +52,11 @@ CURRENT_REVISION = "0038_public_job_catalog_outbox"
 PASSWORD = "secure-password-123"
 POSTGRES_OUTBOX_TEST_URL = os.getenv("BASIC_POSTGRES_PUBLIC_JOB_OUTBOX_TEST_URL")
 BOOTSTRAP = BACKEND_ROOT / "scripts" / "bootstrap_basic_runtime_role.sql"
+POSTGRES_RUNTIME_ROLES = (
+    "caresync_basic_app",
+    "caresync_transport_command_owner",
+    "caresync_transport_evidence_ingest",
+)
 
 
 def _config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Config, Path]:
@@ -1050,8 +1055,20 @@ def test_postgres_restricted_owner_backfill_and_runtime_trigger_behavior(
     admin_database_engine = None
     owner_engine = None
     runtime_engine = None
+    runtime_namespace_owned = False
     try:
         with admin.connect() as connection:
+            existing_runtime_roles = connection.scalar(
+                sa.text(
+                    "SELECT count(*) FROM pg_catalog.pg_roles "
+                    "WHERE rolname=ANY(CAST(:roles AS text[]))"
+                ),
+                {"roles": list(POSTGRES_RUNTIME_ROLES)},
+            )
+            assert existing_runtime_roles == 0, (
+                "The public-outbox runtime role namespace must be fresh"
+            )
+            runtime_namespace_owned = True
             connection.exec_driver_sql(
                 f'CREATE ROLE "{owner_name}" LOGIN NOSUPERUSER NOCREATEDB '
                 "NOCREATEROLE NOREPLICATION NOINHERIT NOBYPASSRLS "
@@ -1129,6 +1146,10 @@ def test_postgres_restricted_owner_backfill_and_runtime_trigger_behavior(
                 )
 
         command.upgrade(config, CURRENT_REVISION)
+        # The assertions above deliberately exercise the restricted-owner
+        # 0038 transition. Alembic's drift check is meaningful only after the
+        # same disposable database reaches the repository head.
+        command.upgrade(config, "head")
         command.check(config)
         with owner_engine.connect() as connection:
             force_state = dict(
@@ -1335,5 +1356,8 @@ def test_postgres_restricted_owner_backfill_and_runtime_trigger_behavior(
             connection.exec_driver_sql(
                 f'DROP DATABASE IF EXISTS "{database_name}"'
             )
+            if runtime_namespace_owned:
+                for role_name in POSTGRES_RUNTIME_ROLES:
+                    connection.exec_driver_sql(f'DROP ROLE IF EXISTS "{role_name}"')
             connection.exec_driver_sql(f'DROP ROLE IF EXISTS "{owner_name}"')
         admin.dispose()

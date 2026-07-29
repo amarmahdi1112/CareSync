@@ -432,7 +432,8 @@ def test_all_three_version_guards_accept_their_first_valid_version(
     with billing_database.begin() as connection:
         connection.exec_driver_sql(
             "CREATE TEMP TABLE billing_account_payer_versions "
-            "(organization_id uuid,billing_account_id uuid,version_number integer)"
+            "(organization_id uuid,billing_account_id uuid,version_number integer) "
+            "ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER payer_version_guard BEFORE INSERT ON "
@@ -447,7 +448,7 @@ def test_all_three_version_guards_accept_their_first_valid_version(
         connection.exec_driver_sql(
             "CREATE TEMP TABLE billing_rate_plan_versions "
             "(organization_id uuid,rate_plan_id uuid,version_number integer,"
-            "effective_from date)"
+            "effective_from date) ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER rate_version_guard BEFORE INSERT ON billing_rate_plan_versions "
@@ -461,7 +462,7 @@ def test_all_three_version_guards_accept_their_first_valid_version(
         connection.exec_driver_sql(
             "CREATE TEMP TABLE billing_agreement_versions "
             "(organization_id uuid,agreement_id uuid,version_number integer,"
-            "effective_from date)"
+            "effective_from date) ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER agreement_version_guard BEFORE INSERT ON "
@@ -479,7 +480,8 @@ def test_journal_validator_accepts_both_trigger_record_shapes(billing_database) 
     journal_entry_id = uuid4()
     with billing_database.begin() as connection:
         connection.exec_driver_sql(
-            "CREATE TEMP TABLE billing_journal_entries (id uuid,organization_id uuid)"
+            "CREATE TEMP TABLE billing_journal_entries "
+            "(id uuid,organization_id uuid) ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER journal_entry_shape AFTER INSERT ON billing_journal_entries "
@@ -491,7 +493,7 @@ def test_journal_validator_accepts_both_trigger_record_shapes(billing_database) 
         )
         connection.exec_driver_sql(
             "CREATE TEMP TABLE billing_journal_lines "
-            "(id uuid,organization_id uuid,journal_entry_id uuid)"
+            "(id uuid,organization_id uuid,journal_entry_id uuid) ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER journal_line_shape AFTER INSERT ON billing_journal_lines "
@@ -1346,7 +1348,7 @@ def test_private_manual_mode_requires_owner_activation_and_uses_real_mutable_sou
         connection.exec_driver_sql(
             "CREATE TEMP TABLE pg_temp.billing_accounts "
             "(organization_id uuid,client_operation_id uuid,request_hash text,"
-            "family_id uuid,payer_guardian_id uuid)"
+            "family_id uuid,payer_guardian_id uuid) ON COMMIT DROP"
         )
         connection.exec_driver_sql(
             "CREATE TRIGGER manual_unactivated_probe AFTER INSERT ON "
@@ -1729,6 +1731,8 @@ def test_readonly_batch_planner_preserves_postgres_rls_and_writes_no_billing_row
 
     def billing_counts() -> dict[str, int]:
         with billing_database.connect() as connection:
+            # Trigger-shape tests intentionally use same-named temporary
+            # relations. Keep this no-write proof pinned to the durable schema.
             names = list(
                 connection.execute(
                     text(
@@ -1740,7 +1744,7 @@ def test_readonly_batch_planner_preserves_postgres_rls_and_writes_no_billing_row
             )
             return {
                 name: int(
-                    connection.scalar(text(f'SELECT count(*) FROM "{name}"')) or 0
+                    connection.scalar(text(f'SELECT count(*) FROM public."{name}"')) or 0
                 )
                 for name in names
             }

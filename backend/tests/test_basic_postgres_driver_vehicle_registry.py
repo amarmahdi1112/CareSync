@@ -29,6 +29,7 @@ BOOTSTRAP = BACKEND_ROOT / "scripts" / "bootstrap_basic_runtime_role.sql"
 PSQL = Path(os.getenv("CARESYNC_PSQL", "/opt/homebrew/opt/postgresql@17/bin/psql"))
 DATABASE_NAME = "caresync"
 RUNTIME_ROLE = "caresync_basic_app"
+CURRENT_REVISION = "0031_driver_vehicle_registry"
 PROTECTED_PORTS = {5432, 5433, 5434}
 REGISTRY_TABLES = (
     "staff_driver_capability_versions",
@@ -393,11 +394,13 @@ def test_postgres_17_registry_migration_rls_and_fail_closed_runtime() -> None:
         with database_admin.begin() as connection:
             connection.execute(text("REVOKE CREATE ON SCHEMA public FROM PUBLIC"))
 
-        migration = _alembic("upgrade", "head")
+        # This is a frozen 0031 certification. Repository head can advance
+        # without changing the schema boundary this proof is responsible for.
+        migration = _alembic("upgrade", CURRENT_REVISION)
         assert migration.returncode == 0, migration.stdout + migration.stderr
         with database_admin.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0031_driver_vehicle_registry"
+                CURRENT_REVISION
             )
 
         bootstrapped = _bootstrap()
@@ -646,7 +649,7 @@ def test_postgres_17_registry_migration_rls_and_fail_closed_runtime() -> None:
         assert "downgrade refused" in (downgrade.stdout + downgrade.stderr).lower()
         with database_admin.connect() as connection:
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0031_driver_vehicle_registry"
+                CURRENT_REVISION
             )
     finally:
         if runtime is not None:

@@ -6193,6 +6193,14 @@ class Database:
         postgres_trigger_functions = {
             key: contract[0] for key, contract in postgres_trigger_contracts.items()
         }
+        # A complete 0031 registry legitimately has its own triggers while no
+        # 0032 command tables exist. Only triggers bound to 0032 tables are
+        # orphan evidence for this boundary.
+        transport_command_trigger_names = {
+            trigger_name
+            for (trigger_name, table_name) in postgres_trigger_functions
+            if table_name in new_tables
+        }
         guard_function_fragments = {
             "caresync_0032_immutable_fact()": ("immutable transport command fact",),
             "caresync_0032_receipt_guard()": ("result_bound", "authority boundary"),
@@ -6313,7 +6321,7 @@ class Database:
                             "WHERE NOT trigger.tgisinternal AND "
                             "trigger.tgname=ANY(CAST(:names AS text[])))"
                         ),
-                        {"names": sorted({name for name, _ in postgres_trigger_functions})},
+                        {"names": sorted(transport_command_trigger_names)},
                     )
                 )
                 if orphaned:
