@@ -371,9 +371,9 @@ def test_restricted_role_provisions_exactly_reviewed_educator(
         marketplace_onboarding,
         "run_local_ocr",
         lambda _path: {
-            "engine": "opencv5+paddleocr",
+            "engine": "opencv+paddleocr",
             "model": "PP-OCRv6_tiny",
-            "vision": {"version": "5", "pipeline": "document-v1"},
+            "vision": {"version": "4.10.0", "pipeline": "document-v1"},
             "lines": [
                 {"text": "This confirms that", "confidence": 0.99},
                 {"text": "Educator Candidate", "confidence": 0.99},

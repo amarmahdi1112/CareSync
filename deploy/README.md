@@ -190,16 +190,40 @@ without deleting the transactional outbox.
 
 Certificate/resume OCR stays on the server. Provision a separate virtual
 environment at `/opt/caresync/ocr/.venv` from
-`backend/scripts/ocr-requirements.txt`; it pins OpenCV 5, PaddleOCR, and
-PyMuPDF. Keep model downloads under `/var/lib/caresync/ocr-home`, which is the
-only writable cache exposed to the API sandbox. Mobile apps upload bounded
-documents and receive reviewed results; they do not bundle the model.
+`backend/scripts/ocr-requirements-linux-x86_64-cp312.lock`. The human-reviewed
+top-level compatibility set remains in `backend/scripts/ocr-requirements.txt`;
+the deployment lock freezes all 65 transitive Linux wheels by version and
+SHA-256. It resolves to CPU PaddlePaddle 3.3.1, PaddleOCR 3.7.0, PaddleX
+3.7.2, OpenCV contrib 4.10.0.84, and PyMuPDF 1.28.0. PaddleX's `ocr-core`
+extra requires that exact OpenCV build, so upgrade and regenerate the complete
+lock together instead of changing OpenCV independently. Keep model downloads
+under `/var/lib/caresync/ocr-home`, which is the only writable cache exposed to
+the API sandbox. Mobile apps upload bounded documents and receive reviewed
+results; they do not bundle the model. Deployment builds and validates a
+content-addressed, service-user-readable OCR environment under
+`/opt/caresync/ocr/venvs`, then atomically repoints `.venv` inside the same
+recovery fence as the database and application. A failed install or activation
+restores the prior OCR pointer and exact requirements identity before the prior
+application can restart.
 
 Before enabling real onboarding, run a synthetic certificate smoke test as the
 `caresync` user, confirm both OCR model families are locally available, and
 measure peak memory/time. The worker has a 90-second API timeout. Failed OCR
 must remain a reviewable failure; it must not silently accept an identity or
 certificate.
+
+The manual rollback command fails closed unless the target release uses the
+same active, fully certified OCR lock. This prevents an older application from
+being restarted against an incompatible global model runtime. An OCR-changing
+rollback requires an operator-reviewed runtime transition, not a best-effort
+downgrade.
+
+The restricted SSH receiver intentionally executes the root-owned
+`/usr/local/sbin/caresync-deploy-release`; release archives cannot replace that
+privileged entrypoint. Before a production run that changes
+`deploy-release.sh` or `validate-release-archive.py`, install the reviewed files
+atomically under the deployment lock and verify their SHA-256 values. This
+out-of-band step preserves the receiver's privilege boundary.
 
 ## Verification and rollback
 

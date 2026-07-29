@@ -360,7 +360,7 @@ def test_alberta_certificate_layout_extracts_holder_level_and_number(tmp_path, m
                 "fusion:PP-OCRv6_tiny_det+PP-OCRv6_tiny_rec|"
                 "PP-OCRv5_mobile_det+latin_PP-OCRv5_mobile_rec"
             ),
-            "vision": {"version": "5.0.0", "pipeline": "document-v2-fused"},
+            "vision": {"version": "4.10.0", "pipeline": "document-v2-fused"},
             "lines": [
                 {"text": "Level 2_10674...", "confidence": 0.9837},
                 {"text": "ALBERTA CHILDCARE", "confidence": 0.9876},

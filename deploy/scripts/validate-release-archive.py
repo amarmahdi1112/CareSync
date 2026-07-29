@@ -28,6 +28,8 @@ REQUIRED_MEMBERS = {
     "release-manifest.json",
     "backend/alembic.ini",
     "backend/pyproject.toml",
+    "backend/scripts/certify_ocr_runtime.py",
+    "backend/scripts/ocr-requirements-linux-x86_64-cp312.lock",
     "backend/uv.lock",
     "frontend-redesign/dist/index.html",
     "deploy/scripts/deploy-release.sh",

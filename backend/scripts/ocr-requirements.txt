@@ -1,3 +1,12 @@
+# Linux x86_64 / CPython 3.12 OCR runtime.
+#
+# PaddleX's `ocr-core` extra is part of PaddleOCR's runtime and pins OpenCV
+# contrib to 4.10.0.84. Keep these five packages as one compatibility set:
+# independently selecting OpenCV 5 makes pip's dependency graph unsatisfiable.
+# Regenerate and certify ocr-requirements-linux-x86_64-cp312.lock whenever this
+# human-reviewed compatibility set changes.
+paddlepaddle==3.3.1
 paddleocr==3.7.0
-opencv-contrib-python==5.0.0.93
+paddlex[ocr-core]==3.7.2
+opencv-contrib-python==4.10.0.84
 pymupdf==1.28.0

@@ -115,7 +115,8 @@ install -d -o caresync -g caresync -m 0700 /var/lib/caresync/vault/family
 install -d -o caresync -g caresync -m 0700 /var/lib/caresync/vault/staff
 install -d -o caresync -g caresync -m 0700 /var/lib/caresync/ocr-home
 install -d -o root -g root -m 0700 /var/backups/caresync
-install -d -o root -g root -m 0755 /opt/caresync/ocr
+install -d -o root -g caresync -m 0750 /opt/caresync/ocr
+install -d -o root -g caresync -m 0750 /opt/caresync/ocr/venvs
 install -d -o root -g root -m 0755 /var/cache/caresync/uv
 install -d -o root -g caresync -m 0750 /etc/caresync
 install -d -o root -g root -m 0700 /etc/caresync/secrets

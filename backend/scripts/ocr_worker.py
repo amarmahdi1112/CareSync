@@ -1,4 +1,4 @@
-"""Isolated OpenCV 5 + PaddleOCR worker. Writes exactly one JSON object to stdout."""
+"""Isolated OpenCV + PaddleOCR worker. Writes exactly one JSON object to stdout."""
 
 from __future__ import annotations
 
@@ -165,11 +165,20 @@ def _merge_lines(target: dict[str, dict], lines: list[dict]) -> None:
 
 
 def _run(path: Path, model_choices: tuple[tuple[str, str], ...]) -> dict:
-    if int(cv2.__version__.split(".", 1)[0]) < 5:
-        raise RuntimeError("opencv5_runtime_required")
+    try:
+        opencv_version = tuple(
+            int(part) for part in cv2.__version__.split(".", 2)[:2]
+        )
+    except ValueError as error:
+        raise RuntimeError("opencv_runtime_incompatible") from error
+    # PaddleOCR 3.7 delegates to PaddleX's ocr-core extra, whose supported
+    # runtime is OpenCV 4.10. Keep the boundary explicit instead of installing
+    # an unsatisfied OpenCV 5 override into the same interpreter.
+    if not ((4, 10) <= opencv_version < (5, 0)):
+        raise RuntimeError("opencv_runtime_incompatible")
     pages = _source_pages(path)
     telemetry = []
-    with tempfile.TemporaryDirectory(prefix="caresync-opencv5-") as directory:
+    with tempfile.TemporaryDirectory(prefix="caresync-opencv-") as directory:
         processed_paths = []
         for index, page in enumerate(pages):
             processed, page_telemetry = _preprocess(page)
@@ -211,7 +220,7 @@ def _run(path: Path, model_choices: tuple[tuple[str, str], ...]) -> dict:
         if not successful_models:
             raise last_error or RuntimeError("ocr_models_unavailable")
     return {
-        "engine": "opencv5+paddleocr",
+        "engine": "opencv+paddleocr",
         "vision": {
             "library": "OpenCV",
             "version": cv2.__version__,

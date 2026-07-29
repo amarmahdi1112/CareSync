@@ -692,9 +692,9 @@ def analyze_document(
             proposal, confidences = _resume_proposal(lines)
         scores = [float(item.get("confidence", 0)) for item in lines]
         analysis.status = "analyzed"
-        analysis.ocr_engine = str(output.get("engine") or "opencv5+paddleocr")
+        analysis.ocr_engine = str(output.get("engine") or "opencv+paddleocr")
         vision = output.get("vision") if isinstance(output.get("vision"), dict) else {}
-        vision_version = str(vision.get("version") or "5")
+        vision_version = str(vision.get("version") or "4.10.0")
         vision_pipeline = str(vision.get("pipeline") or "document-v1")
         recognizer = str(output.get("model") or "PP-OCRv6_tiny")
         # MarketplaceDocumentAnalysis.ocr_model is VARCHAR(80) in PostgreSQL.

@@ -18,6 +18,12 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
+    # Deployment and rollback create this root-owned marker while application
+    # state is transactional. The gate affects only the CareSync virtual host.
+    if (-f /run/caresync-maintenance) {
+        return 503;
+    }
+
     # The API includes ticket-authenticated WebSockets. Keeping the upgrade
     # headers on the complete API prefix also covers future realtime routes.
     location /api/ {
