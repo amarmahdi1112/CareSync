@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -40,6 +41,11 @@ from app.main import create_app
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "secure-password-123"
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
 
 
 def _migrate(tmp_path: Path, monkeypatch, revision: str) -> Path:
@@ -275,8 +281,8 @@ def _seed_0030_application(
                     account_name_snapshot="Candidate User",
                     subject_name_match=True,
                     mismatch_resolution="matched",
-                    issue_date=date.today(),
-                    expiry_date=date.today() + timedelta(days=365),
+                    issue_date=_alberta_today(),
+                    expiry_date=_alberta_today() + timedelta(days=365),
                     candidate_confirmed_at=now,
                 )
             )

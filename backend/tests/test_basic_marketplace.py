@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -554,7 +554,7 @@ def test_candidate_realtime_expands_only_public_and_exact_owned_entities(tmp_pat
     second_user_id = UUID(second_candidate["user_id"])
     first_organization_id = UUID(first_job["organization_id"])
     second_organization_id = UUID(second_job["organization_id"])
-    now = datetime.now().astimezone()
+    now = datetime.now(UTC)
     with application.state.database.session_factory() as session:
         first_candidate_id = session.scalar(
             select(AtsCandidate.id).where(
@@ -720,8 +720,7 @@ def test_candidate_realtime_expands_only_public_and_exact_owned_entities(tmp_pat
             public_catalog_enabled=True,
         )
         candidate_event_ids = {
-            row.event_id if isinstance(row, PublicJobCatalogEvent) else row.id
-            for row in events
+            row.event_id if isinstance(row, PublicJobCatalogEvent) else row.id for row in events
         }
         assert candidate_event_ids == visible_ids
         assert not (candidate_event_ids & excluded_ids)

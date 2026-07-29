@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic.config import Config
@@ -28,6 +29,11 @@ from app.db.session import Database
 from app.main import create_app
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
 
 
 def _settings(database_path: Path) -> Settings:
@@ -170,8 +176,8 @@ def test_0031_registry_is_append_only_and_self_projection_is_private(tmp_path, m
                 jurisdiction="CA-AB",
                 qualification_class="5",
                 identifier_last4="1234",
-                issue_date=date.today() - timedelta(days=365),
-                expiry_date=date.today() + timedelta(days=365),
+                issue_date=_alberta_today() - timedelta(days=365),
+                expiry_date=_alberta_today() + timedelta(days=365),
                 evidence_reference_sha256="a" * 64,
                 effective_at=now,
                 recorded_by_user_id=user.id,
@@ -186,8 +192,8 @@ def test_0031_registry_is_append_only_and_self_projection_is_private(tmp_path, m
                 version_number=1,
                 status="verified",
                 jurisdiction="CA-AB",
-                issue_date=date.today() - timedelta(days=30),
-                expiry_date=date.today() + timedelta(days=365),
+                issue_date=_alberta_today() - timedelta(days=30),
+                expiry_date=_alberta_today() + timedelta(days=365),
                 evidence_reference_sha256="b" * 64,
                 effective_at=now,
                 recorded_by_user_id=user.id,
@@ -199,8 +205,8 @@ def test_0031_registry_is_append_only_and_self_projection_is_private(tmp_path, m
                 version_number=2,
                 status="rejected",
                 jurisdiction="CA-AB",
-                issue_date=date.today(),
-                expiry_date=date.today() + timedelta(days=365),
+                issue_date=_alberta_today(),
+                expiry_date=_alberta_today() + timedelta(days=365),
                 evidence_reference_sha256="c" * 64,
                 effective_at=now,
                 recorded_by_user_id=reviewer.id,
@@ -348,8 +354,8 @@ def test_0031_registry_is_append_only_and_self_projection_is_private(tmp_path, m
                 evidence_type="insurance",
                 version_number=1,
                 status="verified",
-                issue_date=date.today() - timedelta(days=30),
-                expiry_date=date.today() + timedelta(days=335),
+                issue_date=_alberta_today() - timedelta(days=30),
+                expiry_date=_alberta_today() + timedelta(days=335),
                 original_filename="insurance.pdf",
                 media_type="application/pdf",
                 byte_size=1024,
@@ -509,9 +515,7 @@ def test_active_vehicle_plate_is_unique_after_normalization_and_released_on_reti
             session.commit()
 
 
-def test_sqlite_authorization_guard_uses_edmonton_local_expiry_date(
-    tmp_path, monkeypatch
-):
+def test_sqlite_authorization_guard_uses_edmonton_local_expiry_date(tmp_path, monkeypatch):
     database_path = _migrate(tmp_path, monkeypatch)
     application = create_app(_settings(database_path))
     reviewed_at = datetime(2026, 7, 21, 12, 0, tzinfo=UTC)

@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Event, Thread
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -35,6 +36,11 @@ from app.core.config import Settings
 from app.main import create_app
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+FACILITY_TIME_ZONE = ZoneInfo("America/Edmonton")
+
+
+def _facility_today() -> date:
+    return datetime.now(FACILITY_TIME_ZONE).date()
 
 
 def _client(tmp_path, monkeypatch) -> tuple[TestClient, object]:
@@ -496,7 +502,7 @@ def test_pending_unassigned_approval_reserved_roster_and_readiness(tmp_path, mon
         family = _family(client, headers)
         child = _child(client, headers, family["id"])
         facility, _, room = _facility_tree(client, headers)
-        future_start = date.today() + timedelta(days=20)
+        future_start = _facility_today() + timedelta(days=20)
         enrollment = _post(
             client,
             f"/api/v1/children/{child['id']}/enrollments",
@@ -683,7 +689,7 @@ def test_pending_family_placement_signal_opens_exact_family_status_remediation(
             {
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         approved = _post(
@@ -694,7 +700,7 @@ def test_pending_family_placement_signal_opens_exact_family_status_remediation(
                 "client_operation_id": str(uuid4()),
                 "expected_version": enrollment["version"],
                 "room_id": room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert approved["status"] == "active"
@@ -802,7 +808,7 @@ def test_child_and_enrollment_commands_are_exact_actor_private_and_exactly_once(
         enrollment_payload = {
             "client_operation_id": enrollment_operation,
             "facility_id": facility["id"],
-            "start_date": date.today().isoformat(),
+            "start_date": _facility_today().isoformat(),
         }
         created_enrollment = client.post(
             f"/api/v1/children/{child['id']}/enrollments",
@@ -833,7 +839,7 @@ def test_child_and_enrollment_commands_are_exact_actor_private_and_exactly_once(
             headers=owner_headers,
             json={
                 **enrollment_payload,
-                "start_date": (date.today() + timedelta(days=1)).isoformat(),
+                "start_date": (_facility_today() + timedelta(days=1)).isoformat(),
             },
         )
         assert altered_enrollment.status_code == 409
@@ -997,7 +1003,7 @@ def test_batch_placement_preserves_order_replays_exactly_and_rolls_back_atomical
                 "maximum_age_months": 143,
             },
         )
-        start_date = date.today() + timedelta(days=5)
+        start_date = _facility_today() + timedelta(days=5)
 
         successful: list[dict] = []
         for _ in range(2):
@@ -1151,8 +1157,7 @@ def test_batch_placement_preserves_order_replays_exactly_and_rolls_back_atomical
                         RealtimeEvent.entity_id.in_(
                             [UUID(row["id"]) for row in rollback_enrollments]
                         ),
-                        RealtimeEvent.event_type
-                        == "enrollment.room_placement.approved",
+                        RealtimeEvent.event_type == "enrollment.room_placement.approved",
                     )
                 )
                 == 0
@@ -1226,7 +1231,7 @@ def test_readiness_is_tenant_safe_and_facility_filters_family_level_items(
             {
                 "client_operation_id": str(uuid4()),
                 "facility_id": first_facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
 
@@ -1249,7 +1254,7 @@ def test_readiness_is_tenant_safe_and_facility_filters_family_level_items(
             {
                 "client_operation_id": str(uuid4()),
                 "facility_id": second_facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         orphan = _post(
@@ -1370,7 +1375,7 @@ def test_patch_contracts_reject_empty_intent_and_explicit_nonnullable_nulls(
             {
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
 
@@ -2175,7 +2180,7 @@ def test_active_family_is_required_for_enrollment_placement_and_status_regressio
             json={
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         assert rejected.status_code == 409
@@ -2239,7 +2244,7 @@ def test_active_family_is_required_for_enrollment_placement_and_status_regressio
             {
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         regression = client.patch(
@@ -2269,7 +2274,7 @@ def test_active_family_is_required_for_enrollment_placement_and_status_regressio
                 "client_operation_id": approval_operation,
                 "expected_version": 1,
                 "room_id": room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert placement.status_code == 409
@@ -2292,7 +2297,7 @@ def test_active_family_is_required_for_enrollment_placement_and_status_regressio
             assert stored_enrollment is not None
             stored_enrollment.program_id = UUID(room["program_id"])
             stored_enrollment.room_id = UUID(room["id"])
-            stored_enrollment.placement_effective_date = date.today()
+            stored_enrollment.placement_effective_date = _facility_today()
             stored_enrollment.status = "active"
             session.commit()
         lifecycle = client.patch(
@@ -2317,7 +2322,7 @@ def test_enrollment_end_requires_ended_and_cannot_erase_attendance_history(
         family = _family(client, headers)
         child = _child(client, headers, family["id"])
         facility, _, room = _facility_tree(client, headers)
-        start_date = date.today() - timedelta(days=10)
+        start_date = _facility_today() - timedelta(days=10)
         enrollment = _post(
             client,
             f"/api/v1/children/{child['id']}/enrollments",
@@ -2336,7 +2341,7 @@ def test_enrollment_end_requires_ended_and_cannot_erase_attendance_history(
                 "client_operation_id": str(uuid4()),
                 "expected_version": 1,
                 "room_id": room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         contradictory = client.patch(
@@ -2346,14 +2351,14 @@ def test_enrollment_end_requires_ended_and_cannot_erase_attendance_history(
                 "client_operation_id": str(uuid4()),
                 "expected_version": approved["version"],
                 "status": "active",
-                "end_date": date.today().isoformat(),
+                "end_date": _facility_today().isoformat(),
             },
         )
         assert contradictory.status_code == 422
         assert contradictory.json()["detail"]["code"] == "end_date_requires_ended_status"
 
         organization_id = UUID(auth["user"]["organization_id"])
-        service_date = date.today() - timedelta(days=2)
+        service_date = _facility_today() - timedelta(days=2)
         with application.state.database.session_factory() as session:
             stored = session.scalar(
                 select(Enrollment).where(Enrollment.id == UUID(enrollment["id"]))
@@ -2381,7 +2386,7 @@ def test_enrollment_end_requires_ended_and_cannot_erase_attendance_history(
                 "client_operation_id": str(uuid4()),
                 "expected_version": approved["version"],
                 "status": "ended",
-                "end_date": (date.today() - timedelta(days=5)).isoformat(),
+                "end_date": (_facility_today() - timedelta(days=5)).isoformat(),
             },
         )
         assert erased.status_code == 409
@@ -2430,8 +2435,8 @@ def test_reverse_time_single_and_batch_placement_never_overbook_commitments(
             return child, enrollment
 
         room = capacity_one_room("Reverse Single")
-        earlier = date.today() + timedelta(days=3)
-        later = date.today() + timedelta(days=4)
+        earlier = _facility_today() + timedelta(days=3)
+        later = _facility_today() + timedelta(days=4)
         _, later_enrollment = pending_enrollment(later)
         _, earlier_enrollment = pending_enrollment(earlier)
         later_approval = client.post(
@@ -2471,8 +2476,8 @@ def test_reverse_time_single_and_batch_placement_never_overbook_commitments(
         assert room_candidate["available_places"] == 0
 
         batch_room = capacity_one_room("Reverse Batch")
-        _, first = pending_enrollment(date.today() + timedelta(days=5))
-        _, second = pending_enrollment(date.today() + timedelta(days=6))
+        _, first = pending_enrollment(_facility_today() + timedelta(days=5))
+        _, second = pending_enrollment(_facility_today() + timedelta(days=6))
         batch = client.post(
             "/api/v1/room-placement-approvals/batch",
             headers=headers,
@@ -2483,14 +2488,14 @@ def test_reverse_time_single_and_batch_placement_never_overbook_commitments(
                         "client_operation_id": str(uuid4()),
                         "expected_version": 1,
                         "room_id": batch_room["id"],
-                        "effective_date": (date.today() + timedelta(days=6)).isoformat(),
+                        "effective_date": (_facility_today() + timedelta(days=6)).isoformat(),
                     },
                     {
                         "enrollment_id": first["id"],
                         "client_operation_id": str(uuid4()),
                         "expected_version": 1,
                         "room_id": batch_room["id"],
-                        "effective_date": (date.today() + timedelta(days=5)).isoformat(),
+                        "effective_date": (_facility_today() + timedelta(days=5)).isoformat(),
                     },
                 ]
             },
@@ -2648,7 +2653,7 @@ def test_child_directory_is_sql_paged_minimal_and_uses_future_placement_age(
             zero_based = reference.year * 12 + reference.month - 1 - months
             return date(zero_based // 12, zero_based % 12 + 1, min(reference.day, 28))
 
-        future_date = date.today() + timedelta(days=62)
+        future_date = _facility_today() + timedelta(days=62)
         reaches_minimum = _post(
             client,
             "/api/v1/children",
@@ -2658,7 +2663,7 @@ def test_child_directory_is_sql_paged_minimal_and_uses_future_placement_age(
                 "family_id": family["id"],
                 "first_name": "Future Minimum",
                 "last_name": "Age",
-                "date_of_birth": months_before(date.today(), 23).isoformat(),
+                "date_of_birth": months_before(_facility_today(), 23).isoformat(),
             },
         )
         future_enrollment = _post(
@@ -2692,7 +2697,7 @@ def test_child_directory_is_sql_paged_minimal_and_uses_future_placement_age(
                 "family_id": family["id"],
                 "first_name": "Future Maximum",
                 "last_name": "Age",
-                "date_of_birth": months_before(date.today(), 30).isoformat(),
+                "date_of_birth": months_before(_facility_today(), 30).isoformat(),
             },
         )
         with application.state.database.session_factory() as session:
@@ -2747,7 +2752,7 @@ def test_child_directory_does_not_reserve_an_enrollment_ended_before_today(
             },
         )
         organization_id = UUID(auth["user"]["organization_id"])
-        placement_date = date.today() - timedelta(days=10)
+        placement_date = _facility_today() - timedelta(days=10)
         with application.state.database.session_factory() as session:
             session.add(
                 Enrollment(
@@ -2759,7 +2764,7 @@ def test_child_directory_does_not_reserve_an_enrollment_ended_before_today(
                     room_id=UUID(room["id"]),
                     placement_effective_date=placement_date,
                     start_date=placement_date,
-                    end_date=date.today() - timedelta(days=1),
+                    end_date=_facility_today() - timedelta(days=1),
                     status="active",
                     version=1,
                 )

@@ -19,6 +19,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from threading import Event
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -40,6 +41,7 @@ COMMAND_OWNER_ROLE = "caresync_transport_command_owner"
 PROTECTED_PORTS = {5432, 5433, 5434}
 WRITER_SIGNATURE = "caresync_0032_execute_command(text,uuid,text,jsonb)"
 EVIDENCE_COMMANDS = {"qualification_evidence", "vehicle_evidence"}
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
 
 TRANSPORT_TABLES = (
     "transport_registry_command_receipts",
@@ -55,6 +57,12 @@ TRANSPORT_TABLES = (
     "transport_vehicle_evidence_review_decisions",
     "transport_vehicle_evidence_scan_facts",
 )
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
+
+
 AUTHORITY_FLAG_TABLES = (
     "transport_registry_command_receipts",
     "staff_driver_authorization_decisions",
@@ -655,7 +663,7 @@ def _qualification_payload(
     marker: str,
     expiry_days: int = 365,
 ) -> dict[str, object]:
-    today = date.today()
+    today = _alberta_today()
     return {
         "result_id": str(result_id),
         "evidence_object_id": str(evidence_id),
@@ -706,7 +714,7 @@ def _vehicle_evidence_payload(
     marker: str,
     expiry_days: int = 335,
 ) -> dict[str, object]:
-    today = date.today()
+    today = _alberta_today()
     return {
         "result_id": str(result_id),
         "scan_fact_id": str(uuid4()),

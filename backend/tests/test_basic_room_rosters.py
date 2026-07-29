@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
 from app.basic.models import BasicBase, Child
 from app.core.config import Settings
 from app.main import create_app
+
+FACILITY_TIME_ZONE = ZoneInfo("America/Edmonton")
+
+
+def _facility_today() -> date:
+    return datetime.now(FACILITY_TIME_ZONE).date()
 
 
 def _client(tmp_path) -> TestClient:
@@ -148,7 +155,7 @@ def _child(
             json={
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility_id,
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         assert enrollment_response.status_code == 201, enrollment_response.text
@@ -162,7 +169,7 @@ def _child(
                     "client_operation_id": str(uuid4()),
                     "expected_version": enrollment["version"],
                     "room_id": room_id,
-                    "effective_date": date.today().isoformat(),
+                    "effective_date": _facility_today().isoformat(),
                 },
             )
             assert approval_response.status_code == 200, approval_response.text
@@ -248,7 +255,7 @@ def test_room_rosters_include_empty_rooms_open_children_and_unassigned(tmp_path)
                 "client_operation_id": str(uuid4()),
                 "expected_version": ended["enrollments"][0]["version"],
                 "status": "ended",
-                "end_date": date.today().isoformat(),
+                "end_date": _facility_today().isoformat(),
             },
         )
         assert ended_update.status_code == 200, ended_update.text
@@ -426,7 +433,7 @@ def test_placement_approval_enforces_capacity_scope_and_child_lifecycle(tmp_path
                 "client_operation_id": str(uuid4()),
                 "expected_version": candidate_enrollment["version"],
                 "room_id": osc_room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert full.status_code == 409, full.text
@@ -438,7 +445,7 @@ def test_placement_approval_enforces_capacity_scope_and_child_lifecycle(tmp_path
                 "client_operation_id": str(uuid4()),
                 "expected_version": candidate_enrollment["version"],
                 "room_id": inactive_room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert inactive.status_code == 409, inactive.text
@@ -459,7 +466,7 @@ def test_placement_approval_enforces_capacity_scope_and_child_lifecycle(tmp_path
                 "client_operation_id": str(uuid4()),
                 "expected_version": candidate_enrollment["version"],
                 "room_id": second_facility_room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert cross_facility.status_code == 404, cross_facility.text
@@ -471,7 +478,7 @@ def test_placement_approval_enforces_capacity_scope_and_child_lifecycle(tmp_path
                 "client_operation_id": str(uuid4()),
                 "expected_version": second_enrollment["version"],
                 "status": "ended",
-                "end_date": date.today().isoformat(),
+                "end_date": _facility_today().isoformat(),
             },
         )
         assert ended_second.status_code == 200, ended_second.text
@@ -483,7 +490,7 @@ def test_placement_approval_enforces_capacity_scope_and_child_lifecycle(tmp_path
                 "client_operation_id": str(uuid4()),
                 "expected_version": candidate_enrollment["version"],
                 "room_id": osc_room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert approved.status_code == 200, approved.text
@@ -529,7 +536,7 @@ def test_new_enrollments_are_pending_until_approved_and_reserve_capacity(tmp_pat
             json={
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         assert pending.status_code == 201, pending.text
@@ -544,7 +551,7 @@ def test_new_enrollments_are_pending_until_approved_and_reserve_capacity(tmp_pat
                 "client_operation_id": str(uuid4()),
                 "expected_version": pending.json()["version"],
                 "room_id": room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert created.status_code == 200, created.text
@@ -556,7 +563,7 @@ def test_new_enrollments_are_pending_until_approved_and_reserve_capacity(tmp_pat
             json={
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         assert waiting_enrollment.status_code == 201, waiting_enrollment.text
@@ -567,7 +574,7 @@ def test_new_enrollments_are_pending_until_approved_and_reserve_capacity(tmp_pat
                 "client_operation_id": str(uuid4()),
                 "expected_version": waiting_enrollment.json()["version"],
                 "room_id": room["id"],
-                "effective_date": date.today().isoformat(),
+                "effective_date": _facility_today().isoformat(),
             },
         )
         assert full.status_code == 409, full.text
@@ -589,7 +596,7 @@ def test_new_enrollments_are_pending_until_approved_and_reserve_capacity(tmp_pat
             json={
                 "client_operation_id": str(uuid4()),
                 "facility_id": facility["id"],
-                "start_date": date.today().isoformat(),
+                "start_date": _facility_today().isoformat(),
             },
         )
         assert inactive_enrollment.status_code == 422, inactive_enrollment.text

@@ -11,6 +11,7 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from threading import Event, Thread
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,10 +24,15 @@ from app.core.config import Settings
 from app.main import create_app
 
 TEST_PORT = os.getenv("BASIC_POSTGRES_TEST_PORT")
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
 pytestmark = pytest.mark.skipif(
     not TEST_PORT,
     reason="BASIC_POSTGRES_TEST_PORT must identify a disposable PostgreSQL cluster",
 )
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
 
 
 def _url(user: str) -> URL:
@@ -1060,7 +1066,7 @@ def test_postgres_batch_placement_flushes_each_receipt_under_its_operation_conte
                 "maximum_age_months": 143,
             },
         )
-        start_date = date.today() + timedelta(days=5)
+        start_date = _alberta_today() + timedelta(days=5)
         enrollments: list[dict] = []
         for index in range(2):
             child = _post_success(

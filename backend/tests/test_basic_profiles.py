@@ -18,6 +18,11 @@ from app.core.config import Settings
 from app.main import create_app
 
 PASSWORD = "correct-password-123"
+FACILITY_TIME_ZONE = ZoneInfo("America/Edmonton")
+
+
+def _facility_today() -> date:
+    return datetime.now(FACILITY_TIME_ZONE).date()
 
 
 def _client(
@@ -195,7 +200,10 @@ def _create_child(
                 "client_operation_id": str(uuid4()),
                 "expected_version": enrollment["version"],
                 "room_id": room["id"],
-                "effective_date": max(date.today().isoformat(), enrollment_start_date),
+                "effective_date": max(
+                    _facility_today().isoformat(),
+                    enrollment_start_date,
+                ),
             },
         )
         assert approval_response.status_code == 200, approval_response.text
@@ -300,7 +308,7 @@ def test_future_enrollment_is_history_not_current_profile_placement(tmp_path) ->
         headers = _headers(auth)
         family = _create_family(client, headers, "Future")
         facility, program, rooms = _create_facility_tree(client, headers, "Future")
-        future_start = (date.today() + timedelta(days=30)).isoformat()
+        future_start = (_facility_today() + timedelta(days=30)).isoformat()
         child = _create_child(
             client,
             headers,
@@ -483,7 +491,7 @@ def test_photo_tenant_boundary_and_educator_room_scope_fail_closed(
         owner_headers = _headers(owner)
         family = _create_family(client, owner_headers, "Scope")
         facility, program, rooms = _create_facility_tree(client, owner_headers, "Scope")
-        facility_today = date.today() + timedelta(days=1)
+        facility_today = _facility_today() + timedelta(days=1)
         north_child = _create_child(
             client,
             owner_headers,

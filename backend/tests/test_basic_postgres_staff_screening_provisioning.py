@@ -14,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,6 +39,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 Pathway = Literal["educator", "student_educator", "driver"]
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
 
 
 def _port() -> int:
@@ -192,8 +198,8 @@ def _upload_police_check(
         json={
             "expected_version": document["current_version_number"],
             "subject_name": subject_name,
-            "issue_date": date.today().isoformat(),
-            "expiry_date": (date.today() + timedelta(days=365)).isoformat(),
+            "issue_date": _alberta_today().isoformat(),
+            "expiry_date": (_alberta_today() + timedelta(days=365)).isoformat(),
         },
     )
     assert confirmed.status_code == 200, confirmed.text
@@ -220,7 +226,7 @@ def _confirm_ece_certificate(
     proposal = analyzed.json()["proposal"]
     assert proposal["required_fields_complete"] is True
     assert proposal["holder_name_mismatch"] is False
-    expiry = date.today() + timedelta(days=3650)
+    expiry = _alberta_today() + timedelta(days=3650)
     confirmed = client.post(
         f"/api/v1/marketplace/onboarding/documents/{uploaded.json()['id']}/confirm-certificate",
         headers=candidate_headers,
@@ -304,7 +310,7 @@ def _onboard_candidate(
             json={
                 "institution": "NorQuest College",
                 "program": "Early Learning and Child Care",
-                "expected_graduation_date": (date.today() + timedelta(days=730)).isoformat(),
+                "expected_graduation_date": (_alberta_today() + timedelta(days=730)).isoformat(),
             },
         )
         assert details.status_code == 200, details.text
@@ -366,7 +372,7 @@ def test_restricted_role_provisions_exactly_reviewed_educator(
         "scan_private_object",
         lambda _path, _settings: SimpleNamespace(decision="clean"),
     )
-    certificate_expiry = date.today() + timedelta(days=3650)
+    certificate_expiry = _alberta_today() + timedelta(days=3650)
     monkeypatch.setattr(
         marketplace_onboarding,
         "run_local_ocr",
@@ -495,7 +501,7 @@ def test_restricted_role_provisions_exactly_reviewed_educator(
             json={
                 "client_operation_id": str(uuid4()),
                 "position_title": "Early Childhood Educator",
-                "start_date": (date.today() + timedelta(days=30)).isoformat(),
+                "start_date": (_alberta_today() + timedelta(days=30)).isoformat(),
                 "compensation": "$25/hour",
                 "terms": "Educator-only employment; no transport duties.",
                 "expires_at": (datetime.now(UTC) + timedelta(days=14)).isoformat(),

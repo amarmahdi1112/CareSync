@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic.config import Config
@@ -38,6 +39,11 @@ from app.db.sqlite_functions import caresync_local_date
 from app.main import create_app
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+ALBERTA_TIMEZONE = ZoneInfo("America/Edmonton")
+
+
+def _alberta_today() -> date:
+    return datetime.now(ALBERTA_TIMEZONE).date()
 
 
 def _settings(database_path: Path) -> Settings:
@@ -521,8 +527,8 @@ def test_exact_retry_and_independent_review_are_bound_atomically(tmp_path, monke
                         "jurisdiction": "CA-AB",
                         "qualification_class": "5",
                         "identifier_last4": "9876",
-                        "issue_date": (date.today() - timedelta(days=300)).isoformat(),
-                        "expiry_date": (date.today() + timedelta(days=20)).isoformat(),
+                        "issue_date": (_alberta_today() - timedelta(days=300)).isoformat(),
+                        "expiry_date": (_alberta_today() + timedelta(days=20)).isoformat(),
                         **_evidence_private(
                             now,
                             actor_user_id=reviewer.user.id,
@@ -541,8 +547,8 @@ def test_exact_retry_and_independent_review_are_bound_atomically(tmp_path, monke
                     "jurisdiction": "CA-AB",
                     "qualification_class": "5",
                     "identifier_last4": "9876",
-                    "issue_date": (date.today() - timedelta(days=300)).isoformat(),
-                    "expiry_date": (date.today() + timedelta(days=20)).isoformat(),
+                    "issue_date": (_alberta_today() - timedelta(days=300)).isoformat(),
+                    "expiry_date": (_alberta_today() + timedelta(days=20)).isoformat(),
                     **_evidence_private(
                         now,
                         actor_user_id=staff.user.id,
@@ -597,7 +603,7 @@ def test_exact_retry_and_independent_review_are_bound_atomically(tmp_path, monke
                     "jurisdiction": "CA-AB",
                     "qualification_class": None,
                     "identifier_last4": None,
-                    "issue_date": date.today().isoformat(),
+                    "issue_date": _alberta_today().isoformat(),
                     "expiry_date": None,
                     **_evidence_private(
                         now,
@@ -618,7 +624,7 @@ def test_exact_retry_and_independent_review_are_bound_atomically(tmp_path, monke
                     "jurisdiction": "CA-AB",
                     "qualification_class": None,
                     "identifier_last4": None,
-                    "issue_date": date.today().isoformat(),
+                    "issue_date": _alberta_today().isoformat(),
                     "expiry_date": None,
                     **_evidence_private(
                         now,
@@ -653,8 +659,8 @@ def test_exact_retry_and_independent_review_are_bound_atomically(tmp_path, monke
                     "jurisdiction": "CA-AB",
                     "qualification_class": "5",
                     "identifier_last4": "9876",
-                    "issue_date": (date.today() - timedelta(days=300)).isoformat(),
-                    "expiry_date": (date.today() + timedelta(days=40)).isoformat(),
+                    "issue_date": (_alberta_today() - timedelta(days=300)).isoformat(),
+                    "expiry_date": (_alberta_today() + timedelta(days=40)).isoformat(),
                     **_evidence_private(
                         now,
                         actor_user_id=staff.user.id,
@@ -719,8 +725,8 @@ def test_readiness_expiry_notification_names_the_actual_lane(tmp_path, monkeypat
                     "jurisdiction": "CA-AB",
                     "qualification_class": "5",
                     "identifier_last4": "1234",
-                    "issue_date": (date.today() - timedelta(days=300)).isoformat(),
-                    "expiry_date": (date.today() + timedelta(days=20)).isoformat(),
+                    "issue_date": (_alberta_today() - timedelta(days=300)).isoformat(),
+                    "expiry_date": (_alberta_today() + timedelta(days=20)).isoformat(),
                     **_evidence_private(
                         now,
                         actor_user_id=staff.user.id,
@@ -752,8 +758,8 @@ def test_readiness_expiry_notification_names_the_actual_lane(tmp_path, monkeypat
                     "jurisdiction": "CA-AB",
                     "qualification_class": None,
                     "identifier_last4": None,
-                    "issue_date": (date.today() - timedelta(days=30)).isoformat(),
-                    "expiry_date": (date.today() + timedelta(days=200)).isoformat(),
+                    "issue_date": (_alberta_today() - timedelta(days=30)).isoformat(),
+                    "expiry_date": (_alberta_today() + timedelta(days=200)).isoformat(),
                     **_evidence_private(
                         now,
                         actor_user_id=staff.user.id,
@@ -848,8 +854,8 @@ def test_readiness_expiry_notification_names_the_actual_lane(tmp_path, monkeypat
                     "jurisdiction": "CA-AB",
                     "qualification_class": None,
                     "identifier_last4": None,
-                    "issue_date": date.today().isoformat(),
-                    "expiry_date": (date.today() + timedelta(days=20)).isoformat(),
+                    "issue_date": _alberta_today().isoformat(),
+                    "expiry_date": (_alberta_today() + timedelta(days=20)).isoformat(),
                     **_evidence_private(
                         now,
                         actor_user_id=staff.user.id,

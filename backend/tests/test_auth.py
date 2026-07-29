@@ -1,6 +1,6 @@
 """Authentication compatibility tests."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import bcrypt
@@ -23,6 +23,7 @@ def _build_client(tmp_path) -> TestClient:
     application = create_app(settings)
     Base.metadata.create_all(application.state.database.engine)
     with application.state.database.session_factory() as session:
+        legacy_utc_now = datetime.now(UTC).replace(tzinfo=None)
         permission = Permission(name="users:read", description="Read users")
         role = Role(name="Administrator", description="Test role", permissions=[permission])
         user = User(
@@ -34,8 +35,8 @@ def _build_client(tmp_path) -> TestClient:
             provider="local",
             role=role,
             is_active=True,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
+            created_at=legacy_utc_now,
+            updated_at=legacy_utc_now,
         )
         session.add(user)
         session.commit()

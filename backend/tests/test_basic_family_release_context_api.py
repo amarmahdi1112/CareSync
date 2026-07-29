@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from alembic.config import Config
@@ -51,12 +52,23 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PASSWORD = "correct-password-123"
 A2 = "0029A2_authority_activation"
 B = "0029B_release_context"
+FACILITY_TIMEZONE = ZoneInfo("America/Edmonton")
+
+
+def _facility_business_date(instant: datetime | None = None) -> date:
+    current = instant or datetime.now(UTC)
+    return current.astimezone(FACILITY_TIMEZONE).date()
 
 
 def test_release_context_service_date_uses_facility_timezone() -> None:
     instant = datetime(2026, 1, 1, 1, 30, tzinfo=UTC)
     assert _facility_service_date(instant, "America/Edmonton") == date(2025, 12, 31)
     assert _facility_service_date(instant, "Asia/Tokyo") == date(2026, 1, 1)
+
+
+def test_release_fixture_business_date_does_not_follow_utc_rollover() -> None:
+    instant = datetime(2026, 7, 29, 1, 30, tzinfo=UTC)
+    assert _facility_business_date(instant) == date(2026, 7, 28)
 
 
 def test_release_context_invalid_facility_timezone_fails_closed() -> None:
@@ -211,6 +223,7 @@ def _family_child_and_enrollment(
     facility: dict,
     room: dict,
 ) -> tuple[dict, dict]:
+    business_date = _facility_business_date()
     family_response = client.post(
         "/api/v1/families",
         headers=headers,
@@ -249,7 +262,7 @@ def _family_child_and_enrollment(
         json={
             "client_operation_id": str(uuid4()),
             "facility_id": facility["id"],
-            "start_date": date.today().isoformat(),
+            "start_date": business_date.isoformat(),
         },
     )
     assert enrollment_response.status_code == 201, enrollment_response.text
@@ -261,7 +274,7 @@ def _family_child_and_enrollment(
             "client_operation_id": str(uuid4()),
             "expected_version": enrollment["version"],
             "room_id": room["id"],
-            "effective_date": date.today().isoformat(),
+            "effective_date": business_date.isoformat(),
         },
     )
     assert approval_response.status_code == 200, approval_response.text
@@ -515,8 +528,7 @@ class Scenario:
     @property
     def path(self) -> str:
         return (
-            f"/api/v1/children/{self.child['id']}/release-context"
-            f"?facility_id={self.facility['id']}"
+            f"/api/v1/children/{self.child['id']}/release-context?facility_id={self.facility['id']}"
         )
 
 
@@ -533,13 +545,9 @@ def scenario(tmp_path, monkeypatch):
             auth["user"]["organization_id"],
         )
         facility, program, rooms = _facility_tree(client, owner_headers)
-        family, child = _family_child_and_enrollment(
-            client, owner_headers, facility, rooms[0]
-        )
+        family, child = _family_child_and_enrollment(client, owner_headers, facility, rooms[0])
         _clock_in(client, owner_headers, facility["id"])
-        attendance = _check_in_child(
-            client, owner_headers, child["id"], facility["id"]
-        )
+        attendance = _check_in_child(client, owner_headers, child["id"], facility["id"])
         yield Scenario(
             client=client,
             application=application,
@@ -570,9 +578,7 @@ def test_runtime_gate_rejects_partial_b_without_disabling_a2(
             _register(bootstrap_client, suffix="damaged-runtime-role")
     with sqlite3.connect(database_path) as connection:
         if damage == "trigger":
-            connection.execute(
-                "DROP TRIGGER child_authority_heads_release_context_update"
-            )
+            connection.execute("DROP TRIGGER child_authority_heads_release_context_update")
         else:
             row = connection.execute(
                 "SELECT id,permissions FROM roles WHERE is_system=1 AND key='educator'"
@@ -628,9 +634,7 @@ def test_a2_only_route_fails_503_before_projection_or_request_shape(
         )
     assert response.status_code == 422
     assert valid.status_code == 503
-    assert valid.json() == {
-        "detail": {"code": "family_authority_release_context_unavailable"}
-    }
+    assert valid.json() == {"detail": {"code": "family_authority_release_context_unavailable"}}
     assert calls == 0
 
 
@@ -659,9 +663,7 @@ def test_strict_query_and_body_reject_before_repository(
     for path in cases:
         response = scenario.client.get(path, headers=scenario.owner_headers)
         assert response.status_code == 422, response.text
-        assert response.json() == {
-            "detail": {"code": "invalid_release_context_query"}
-        }
+        assert response.json() == {"detail": {"code": "invalid_release_context_query"}}
     body_response = scenario.client.request(
         "GET",
         scenario.path,
@@ -669,9 +671,7 @@ def test_strict_query_and_body_reject_before_repository(
         content=b"{}",
     )
     assert body_response.status_code == 422, body_response.text
-    assert body_response.json() == {
-        "detail": {"code": "release_context_request_body_not_allowed"}
-    }
+    assert body_response.json() == {"detail": {"code": "release_context_request_body_not_allowed"}}
     assert calls == 0
 
 
@@ -680,9 +680,7 @@ def _write_counts(application) -> dict[str, int]:
         return {
             "audit": session.scalar(select(func.count()).select_from(AuditEvent)),
             "realtime": session.scalar(select(func.count()).select_from(RealtimeEvent)),
-            "receipt": session.scalar(
-                select(func.count()).select_from(ChildcareCommandReceipt)
-            ),
+            "receipt": session.scalar(select(func.count()).select_from(ChildcareCommandReceipt)),
             "head": session.scalar(select(func.count()).select_from(ChildAuthorityHead)),
             "authorization": session.scalar(
                 select(func.count()).select_from(ChildReleaseAuthorization)
@@ -943,9 +941,7 @@ def test_owner_still_requires_exact_open_facility_shift_and_on_site_child(
     _clock_in(scenario.client, scenario.owner_headers, other_id)
     wrong_facility = scenario.client.get(scenario.path, headers=scenario.owner_headers)
     assert wrong_facility.status_code == 409, wrong_facility.text
-    assert wrong_facility.json() == {
-        "detail": {"code": "open_shift_facility_mismatch"}
-    }
+    assert wrong_facility.json() == {"detail": {"code": "open_shift_facility_mismatch"}}
     _clock_out(scenario.client, scenario.owner_headers, other_id)
     _clock_in(scenario.client, scenario.owner_headers, scenario.facility["id"])
 
@@ -984,9 +980,7 @@ def test_facility_and_room_scope_fail_closed_for_educator(scenario: Scenario) ->
     )
     wrong_room = scenario.client.get(scenario.path, headers=wrong_headers)
     assert wrong_room.status_code == 404, wrong_room.text
-    assert wrong_room.json() == {
-        "detail": {"code": "release_context_scope_not_found"}
-    }
+    assert wrong_room.json() == {"detail": {"code": "release_context_scope_not_found"}}
 
     with scenario.application.state.database.session_factory() as session:
         role = session.scalar(select(Role).where(Role.id == UUID(educator_role_id)))
@@ -1008,9 +1002,7 @@ def test_inactive_facility_is_hidden_as_scope_not_found(scenario: Scenario) -> N
         session.commit()
     response = scenario.client.get(scenario.path, headers=scenario.owner_headers)
     assert response.status_code == 404, response.text
-    assert response.json() == {
-        "detail": {"code": "release_context_scope_not_found"}
-    }
+    assert response.json() == {"detail": {"code": "release_context_scope_not_found"}}
 
 
 @pytest.mark.parametrize(
@@ -1022,9 +1014,7 @@ def test_inactive_facility_is_hidden_as_scope_not_found(scenario: Scenario) -> N
             "release_context_inconsistent",
         ),
         (
-            ReleaseContextRepositoryError(
-                "family_authority_release_context_unavailable", 503
-            ),
+            ReleaseContextRepositoryError("family_authority_release_context_unavailable", 503),
             503,
             "family_authority_release_context_unavailable",
         ),
@@ -1050,11 +1040,13 @@ def test_repository_and_composer_failures_are_bounded_without_internal_detail(
     from app.api.basic import family_release_context as route_module
 
     if isinstance(error, ReleaseContextRepositoryError):
+
         def fail_repository(*args, **kwargs):
             raise error
 
         monkeypatch.setattr(route_module, "load_release_context_input", fail_repository)
     else:
+
         def fail_composer(*args, **kwargs):
             raise error
 
@@ -1095,8 +1087,6 @@ def test_duplicate_open_attendance_intervals_fail_inconsistent_without_identity_
         session.commit()
     response = scenario.client.get(scenario.path, headers=scenario.owner_headers)
     assert response.status_code == 409, response.text
-    assert response.json() == {
-        "detail": {"code": "release_context_inconsistent"}
-    }
+    assert response.json() == {"detail": {"code": "release_context_inconsistent"}}
     assert scenario.child["id"] not in response.text
     assert scenario.family["id"] not in response.text

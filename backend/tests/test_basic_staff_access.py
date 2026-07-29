@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
@@ -23,6 +24,11 @@ PASSWORD = "correct-password-123"
 REPLACEMENT_PASSWORD = "replacement-password-456"
 RESET_PASSWORD = "reset-password-789"
 SERVICE_DATE = "2026-07-15"
+FACILITY_TIME_ZONE = ZoneInfo("America/Edmonton")
+
+
+def _facility_today() -> date:
+    return datetime.now(FACILITY_TIME_ZONE).date()
 
 
 def _client(tmp_path) -> tuple[TestClient, object]:
@@ -277,7 +283,7 @@ def _create_child(
             "client_operation_id": str(uuid4()),
             "expected_version": enrollment["version"],
             "room_id": room_id,
-            "effective_date": date.today().isoformat(),
+            "effective_date": _facility_today().isoformat(),
         },
     )
     assert approval_response.status_code == 200, approval_response.text
@@ -662,9 +668,7 @@ def test_educator_rosters_and_attendance_are_room_scoped(tmp_path) -> None:
         assert staff_self.status_code == 200, staff_self.text
         assert staff_self.json()["open_shift"]["status"] == "open"
         assert staff_self.json()["assigned_rooms"][0]["id"] == north_room["id"]
-        assert staff_self.json()["assigned_facilities"][0][
-            "verified_release_checkout"
-        ] == {
+        assert staff_self.json()["assigned_facilities"][0]["verified_release_checkout"] == {
             "runtime_available": False,
             "facility_activated": False,
             "staff_eligible": True,
