@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 from starlette.requests import Request
 
+import app.basic.room_safety as room_safety_module
+import app.basic.shift_guards as shift_guards_module
 from app.api.basic.dependencies import BasicContext
 from app.api.basic.room_safety import _manager_access, _manager_scope
 from app.basic.models import (
@@ -70,6 +72,34 @@ from app.basic.room_safety_schemas import (
 )
 from app.basic.shift_guards import require_open_shift
 
+FIXED_FACILITY_LOCAL_NOW = datetime(
+    2026,
+    6,
+    15,
+    12,
+    0,
+    tzinfo=ZoneInfo("America/Edmonton"),
+)
+FIXED_NOW = FIXED_FACILITY_LOCAL_NOW.astimezone(UTC)
+
+
+class _FixedRoomSafetyDateTime(datetime):
+    """Keep defaults in one facility-local minute with deterministic ordering."""
+
+    _next = FIXED_NOW
+
+    @classmethod
+    def reset(cls) -> None:
+        cls._next = FIXED_NOW
+
+    @classmethod
+    def now(cls, tz=None):
+        value = cls._next
+        cls._next += timedelta(seconds=1)
+        if tz is None:
+            return value.replace(tzinfo=None)
+        return value.astimezone(tz)
+
 
 @dataclass
 class World:
@@ -89,7 +119,10 @@ class World:
 
 
 @pytest.fixture
-def world() -> World:
+def world(monkeypatch: pytest.MonkeyPatch) -> World:
+    _FixedRoomSafetyDateTime.reset()
+    monkeypatch.setattr(room_safety_module, "datetime", _FixedRoomSafetyDateTime)
+    monkeypatch.setattr(shift_guards_module, "datetime", _FixedRoomSafetyDateTime)
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -97,7 +130,7 @@ def world() -> World:
     )
     BasicBase.metadata.create_all(engine)
     session = Session(engine, expire_on_commit=False)
-    now = datetime.now(UTC).replace(microsecond=0)
+    now = FIXED_NOW
     organization = Organization(
         id=uuid4(),
         name="0041 Portable Centre",
@@ -235,9 +268,7 @@ def world() -> World:
 
 def _request(*, foundation_enabled: bool) -> Request:
     application = SimpleNamespace(
-        state=SimpleNamespace(
-            live_room_presence_safety_board_foundation_enabled=foundation_enabled
-        )
+        state=SimpleNamespace(live_room_presence_safety_board_foundation_enabled=foundation_enabled)
     )
     return Request(
         {
@@ -306,9 +337,7 @@ def _add_present_child(
         child_id=uuid4(),
         enrollment_id=uuid4(),
         room_id=room.id if room is not None else None,
-        service_date=_as_of(world)
-        .astimezone(ZoneInfo(world.facility.timezone))
-        .date(),
+        service_date=_as_of(world).astimezone(ZoneInfo(world.facility.timezone)).date(),
         status="present",
         version=1,
     )
@@ -382,9 +411,7 @@ def test_capability_is_absent_before_0041_cutover_and_present_after_receipts(
     )
     assert response.complete is True
     assert response.replayed is False
-    assert [item.facility_id for item in response.facility_receipts] == [
-        world.facility.id
-    ]
+    assert [item.facility_id for item in response.facility_receipts] == [world.facility.id]
     require_capability(request, world.session, world.organization.id)
     assert capability_enabled(request, world.session, world.organization.id) is True
     assert capability_marker() == RoomSafetyCapability()
@@ -483,15 +510,11 @@ def test_organization_wide_presence_is_coherent_without_access_assignments(
         facility_id=world.facility.id,
         as_of=_as_of(world),
     )
-    room = next(
-        value for value in board.rooms if value.room_id == world.room_one.id
-    )
+    room = next(value for value in board.rooms if value.room_id == world.room_one.id)
     assert board.facility.open_shift_staff == 1
     assert board.facility.located_staff == 1
     assert board.facility.unlocated_staff == 0
-    assert "room_presence_source_incoherent" not in (
-        board.facility.data_quality_reason_codes
-    )
+    assert "room_presence_source_incoherent" not in (board.facility.data_quality_reason_codes)
     assert room.confirmed_staff == 1
 
     reconcile_facility_exceptions(
@@ -506,11 +529,9 @@ def test_organization_wide_presence_is_coherent_without_access_assignments(
     assert (
         world.session.scalar(
             select(func.count(RoomOperationalExceptionHead.id)).where(
-                RoomOperationalExceptionHead.organization_id
-                == world.organization.id,
+                RoomOperationalExceptionHead.organization_id == world.organization.id,
                 RoomOperationalExceptionHead.facility_id == world.facility.id,
-                RoomOperationalExceptionHead.condition_code
-                == "source_integrity_unknown",
+                RoomOperationalExceptionHead.condition_code == "source_integrity_unknown",
                 RoomOperationalExceptionHead.state != "resolved",
             )
         )
@@ -583,9 +604,7 @@ def test_future_open_shift_fails_closed_without_exposing_room_choices(
         world.session.scalar(
             select(func.count())
             .select_from(StaffRoomPresenceSession)
-            .where(
-                StaffRoomPresenceSession.organization_id == world.organization.id
-            )
+            .where(StaffRoomPresenceSession.organization_id == world.organization.id)
         )
         == 0
     )
@@ -600,13 +619,13 @@ def test_future_current_presence_is_unknown_and_cannot_be_moved(
         started.affected_session_id,
     )
     assert current is not None
-    current.started_at = datetime.now(UTC) + timedelta(minutes=2)
+    current.started_at = world.now + timedelta(minutes=2)
     world.session.flush()
 
     projection = staff_presence_projection(
         world.session,
         world.context,
-        generated_at=datetime.now(UTC),
+        generated_at=world.now,
     )
     assert projection.current_presence is None
     assert projection.eligible_rooms == []
@@ -677,9 +696,7 @@ def test_invalid_current_room_assignment_is_fail_visible_without_room_choices(
         operation_id=uuid4(),
         occurred_at=world.now + timedelta(minutes=30),
     )
-    assert [item.from_session_id for item in terminal_receipts] == [
-        started.affected_session_id
-    ]
+    assert [item.from_session_id for item in terminal_receipts] == [started.affected_session_id]
 
 
 def test_current_presence_shift_mismatch_is_not_reported_as_a_room_selection(
@@ -720,9 +737,7 @@ def test_current_presence_shift_mismatch_is_not_reported_as_a_room_selection(
         operation_id=uuid4(),
         occurred_at=world.now + timedelta(minutes=30),
     )
-    assert [item.from_session_id for item in terminal_receipts] == [
-        started.affected_session_id
-    ]
+    assert [item.from_session_id for item in terminal_receipts] == [started.affected_session_id]
 
 
 def test_board_arithmetic_separates_capacity_from_configured_staff_target(
@@ -772,8 +787,7 @@ def test_facility_target_attention_materializes_a_facility_exception(
 
     head = world.session.scalar(
         select(RoomOperationalExceptionHead).where(
-            RoomOperationalExceptionHead.organization_id
-            == world.organization.id,
+            RoomOperationalExceptionHead.organization_id == world.organization.id,
             RoomOperationalExceptionHead.facility_id == world.facility.id,
             RoomOperationalExceptionHead.scope_kind == "facility",
             RoomOperationalExceptionHead.scope_id == world.facility.id,
@@ -933,9 +947,7 @@ def test_incoherent_present_day_fails_child_arithmetic_to_unknown(
     assert board.facility.confirmed_children is None
     assert board.facility.present_children_without_active_room is None
     assert board.facility.overall_state == "unknown"
-    assert board.facility.data_quality_reason_codes == [
-        "attendance_source_incoherent"
-    ]
+    assert board.facility.data_quality_reason_codes == ["attendance_source_incoherent"]
     assert room.confirmed_children is None
     assert room.capacity_state == "unknown"
     assert room.confirmed_staff == 1
@@ -964,9 +976,7 @@ def test_staff_source_incoherence_makes_unconfigured_room_unknown(
     assert room.capacity_state == "within_configured_capacity"
     assert room.confirmed_staff is None
     assert room.configured_target.state == "not_configured"
-    assert room.data_quality_reason_codes == [
-        "room_presence_source_incoherent"
-    ]
+    assert room.data_quality_reason_codes == ["room_presence_source_incoherent"]
     assert room.overall_state == "unknown"
 
 
@@ -987,9 +997,7 @@ def test_staff_board_exposes_unknown_source_even_when_attention_has_precedence(
     assert board.current_room.overall_state == "attention"
     assert board.current_room.confirmed_children is None
     assert board.current_room.capacity_state == "unknown"
-    assert board.current_room.data_quality_reason_codes == [
-        "attendance_source_incoherent"
-    ]
+    assert board.current_room.data_quality_reason_codes == ["attendance_source_incoherent"]
     assert board.unavailable_reason == "source_integrity_unknown"
 
 
@@ -1011,9 +1019,7 @@ def test_active_interval_on_nonpresent_day_fails_board_to_unknown(
     assert board.facility.confirmed_children is None
     assert board.facility.present_children_without_active_room is None
     assert board.facility.overall_state == "unknown"
-    assert board.facility.data_quality_reason_codes == [
-        "attendance_source_incoherent"
-    ]
+    assert board.facility.data_quality_reason_codes == ["attendance_source_incoherent"]
     assert room.confirmed_children is None
     assert room.capacity_state == "unknown"
     assert room.data_quality_reason_codes == ["attendance_source_incoherent"]
@@ -1036,8 +1042,7 @@ def test_incoherent_source_cannot_resolve_a_confirmed_capacity_episode(
 
     capacity_head = world.session.scalar(
         select(RoomOperationalExceptionHead).where(
-            RoomOperationalExceptionHead.organization_id
-            == world.organization.id,
+            RoomOperationalExceptionHead.organization_id == world.organization.id,
             RoomOperationalExceptionHead.facility_id == world.facility.id,
             RoomOperationalExceptionHead.scope_kind == "room",
             RoomOperationalExceptionHead.scope_id == world.room_one.id,
@@ -1071,11 +1076,9 @@ def test_incoherent_source_cannot_resolve_a_confirmed_capacity_episode(
     assert (
         world.session.scalar(
             select(RoomOperationalExceptionHead).where(
-                RoomOperationalExceptionHead.organization_id
-                == world.organization.id,
+                RoomOperationalExceptionHead.organization_id == world.organization.id,
                 RoomOperationalExceptionHead.facility_id == world.facility.id,
-                RoomOperationalExceptionHead.condition_code
-                == "source_integrity_unknown",
+                RoomOperationalExceptionHead.condition_code == "source_integrity_unknown",
                 RoomOperationalExceptionHead.state != "resolved",
             )
         )
@@ -1084,8 +1087,7 @@ def test_incoherent_source_cannot_resolve_a_confirmed_capacity_episode(
     assert (
         world.session.scalar(
             select(func.count(RoomOperationalExceptionEvent.id)).where(
-                RoomOperationalExceptionEvent.organization_id
-                == world.organization.id,
+                RoomOperationalExceptionEvent.organization_id == world.organization.id,
                 RoomOperationalExceptionEvent.exception_id == capacity_head.id,
                 RoomOperationalExceptionEvent.event_type == "resolved",
             )
@@ -1126,8 +1128,7 @@ def test_incoherent_source_cannot_resolve_a_confirmed_capacity_episode(
     assert (
         world.session.scalar(
             select(func.count(RoomOperationalExceptionEvent.id)).where(
-                RoomOperationalExceptionEvent.organization_id
-                == world.organization.id,
+                RoomOperationalExceptionEvent.organization_id == world.organization.id,
                 RoomOperationalExceptionEvent.exception_id == capacity_head.id,
                 RoomOperationalExceptionEvent.event_type == "resolved",
             )
@@ -1160,8 +1161,7 @@ def test_acknowledged_source_improvement_keeps_episode_and_suppresses_new_wake(
             RoomOperationalExceptionHead.facility_id == world.facility.id,
             RoomOperationalExceptionHead.scope_kind == "room",
             RoomOperationalExceptionHead.scope_id == world.room_one.id,
-            RoomOperationalExceptionHead.condition_code
-            == "source_integrity_unknown",
+            RoomOperationalExceptionHead.condition_code == "source_integrity_unknown",
             RoomOperationalExceptionHead.state == "open",
         )
     )
@@ -1232,27 +1232,34 @@ def test_acknowledged_source_improvement_keeps_episode_and_suppresses_new_wake(
     assert acknowledged_at is not None
     assert aware_utc(head.acknowledged_at) == aware_utc(acknowledged_at)
     assert head.current_fingerprint_sha256 != previous_fingerprint
-    assert head.current_evidence["reason_codes"] == [
-        "attendance_source_incoherent"
-    ]
-    assert world.session.scalar(
-        select(func.count(RoomOperationalExceptionEvent.id)).where(
-            RoomOperationalExceptionEvent.organization_id == world.organization.id,
-            RoomOperationalExceptionEvent.exception_id == head.id,
+    assert head.current_evidence["reason_codes"] == ["attendance_source_incoherent"]
+    assert (
+        world.session.scalar(
+            select(func.count(RoomOperationalExceptionEvent.id)).where(
+                RoomOperationalExceptionEvent.organization_id == world.organization.id,
+                RoomOperationalExceptionEvent.exception_id == head.id,
+            )
         )
-    ) == event_count
-    assert world.session.scalar(
-        select(func.count(RealtimeEvent.id)).where(
-            RealtimeEvent.organization_id == world.organization.id,
-            RealtimeEvent.entity_id == head.id,
+        == event_count
+    )
+    assert (
+        world.session.scalar(
+            select(func.count(RealtimeEvent.id)).where(
+                RealtimeEvent.organization_id == world.organization.id,
+                RealtimeEvent.entity_id == head.id,
+            )
         )
-    ) == realtime_count
-    assert world.session.scalar(
-        select(func.count(UserNotification.id)).where(
-            UserNotification.organization_id == world.organization.id,
-            UserNotification.action_entity_id == head.id,
+        == realtime_count
+    )
+    assert (
+        world.session.scalar(
+            select(func.count(UserNotification.id)).where(
+                UserNotification.organization_id == world.organization.id,
+                UserNotification.action_entity_id == head.id,
+            )
         )
-    ) == notification_count
+        == notification_count
+    )
 
 
 def test_presence_commands_are_exactly_replayable_and_fail_stale_or_reused_intent(
@@ -1578,8 +1585,7 @@ def test_exception_material_time_comes_only_from_latest_append_only_event(
     world.session.flush()
     first_episode = world.session.scalar(
         select(RoomOperationalExceptionHead).where(
-            RoomOperationalExceptionHead.organization_id
-            == world.organization.id,
+            RoomOperationalExceptionHead.organization_id == world.organization.id,
             RoomOperationalExceptionHead.condition_code
             == "confirmed_children_above_configured_room_capacity",
             RoomOperationalExceptionHead.state == "open",
@@ -1605,9 +1611,7 @@ def test_exception_material_time_comes_only_from_latest_append_only_event(
         cursor=None,
         limit=100,
     )
-    first_item = next(
-        item for item in first_page.items if item.id == first_episode.id
-    )
+    first_item = next(item for item in first_page.items if item.id == first_episode.id)
     assert first_item.state == "resolved"
     assert first_item.resolved_at is not None
     assert first_item.materially_changed_at is None
@@ -1624,8 +1628,7 @@ def test_exception_material_time_comes_only_from_latest_append_only_event(
     world.session.flush()
     second_episode = world.session.scalar(
         select(RoomOperationalExceptionHead).where(
-            RoomOperationalExceptionHead.organization_id
-            == world.organization.id,
+            RoomOperationalExceptionHead.organization_id == world.organization.id,
             RoomOperationalExceptionHead.condition_code
             == "confirmed_children_above_configured_room_capacity",
             RoomOperationalExceptionHead.state == "open",
@@ -1655,8 +1658,7 @@ def test_exception_material_time_comes_only_from_latest_append_only_event(
     world.session.flush()
     latest_material_time = world.session.scalar(
         select(func.max(RoomOperationalExceptionEvent.occurred_at)).where(
-            RoomOperationalExceptionEvent.organization_id
-            == world.organization.id,
+            RoomOperationalExceptionEvent.organization_id == world.organization.id,
             RoomOperationalExceptionEvent.exception_id == second_episode.id,
             RoomOperationalExceptionEvent.event_type == "materially_changed",
         )
@@ -1710,9 +1712,7 @@ def test_exception_material_time_comes_only_from_latest_append_only_event(
         cursor=None,
         limit=100,
     )
-    second_item = next(
-        item for item in second_page.items if item.id == second_episode.id
-    )
+    second_item = next(item for item in second_page.items if item.id == second_episode.id)
     assert second_item.materially_changed_at == latest_material_time
     assert second_item.materially_changed_at != second_item.resolved_at
 
@@ -1789,9 +1789,7 @@ def test_manager_permission_scope_and_cross_tenant_resources_fail_closed(
         last_changed_at=world.now,
         version=1,
     )
-    world.session.add_all(
-        [foreign_organization, foreign_facility, foreign_exception]
-    )
+    world.session.add_all([foreign_organization, foreign_facility, foreign_exception])
     world.session.flush()
     with pytest.raises(HTTPException) as foreign_board:
         facility_live_board(
@@ -1873,8 +1871,7 @@ def test_access_revocation_closure_always_invalidates_live_clients(
         world.session.scalars(
             select(RealtimeEvent).where(
                 RealtimeEvent.organization_id == world.organization.id,
-                RealtimeEvent.event_type
-                == "staff_room_presence.ended",
+                RealtimeEvent.event_type == "staff_room_presence.ended",
                 RealtimeEvent.entity_id == started.affected_session_id,
             )
         )
@@ -1894,8 +1891,7 @@ def test_access_revocation_closure_always_invalidates_live_clients(
         world.session.scalars(
             select(AuditEvent).where(
                 AuditEvent.organization_id == world.organization.id,
-                AuditEvent.action
-                == "staff_room_presence.access_revoked",
+                AuditEvent.action == "staff_room_presence.access_revoked",
                 AuditEvent.entity_id == started.affected_session_id,
             )
         )
@@ -1945,7 +1941,7 @@ def test_future_shift_or_presence_blocks_nonterminal_child_work_but_not_checkout
     )
     assert current is not None
 
-    world.shift.clocked_in_at = datetime.now(UTC) + timedelta(minutes=2)
+    world.shift.clocked_in_at = world.now + timedelta(minutes=2)
     world.session.flush()
     with pytest.raises(HTTPException) as future_shift:
         require_open_shift(
@@ -1967,7 +1963,7 @@ def test_future_shift_or_presence_blocks_nonterminal_child_work_but_not_checkout
     )
 
     world.shift.clocked_in_at = world.now - timedelta(hours=1)
-    current.started_at = datetime.now(UTC) + timedelta(minutes=2)
+    current.started_at = world.now + timedelta(minutes=2)
     world.session.flush()
     with pytest.raises(HTTPException) as future_presence:
         require_open_shift(
@@ -1978,9 +1974,7 @@ def test_future_shift_or_presence_blocks_nonterminal_child_work_but_not_checkout
             enforce_room_presence=True,
         )
     assert _error_code(future_presence) == "source_integrity_unknown"
-    assert future_presence.value.detail["reason"] == (
-        "future_current_room_presence"
-    )
+    assert future_presence.value.detail["reason"] == ("future_current_room_presence")
     require_open_shift(
         world.session,
         world.context,
