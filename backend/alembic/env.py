@@ -88,7 +88,11 @@ def _target_url() -> str:
 
 
 def _url() -> str:
-    return _target_url().replace("%", "%%")
+    # _explicit_url() already removes ConfigParser's doubled percent signs.
+    # Both Alembic call sites below consume this value directly, so re-escaping
+    # it would corrupt percent-encoded libpq query parameters such as a Unix
+    # socket directory.
+    return _target_url()
 
 
 def _safe_target() -> str:

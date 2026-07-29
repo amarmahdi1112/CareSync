@@ -119,6 +119,32 @@ def test_test_environment_refuses_protected_port_even_with_opt_in() -> None:
     assert "migration-password-must-not-leak" not in completed.stderr
 
 
+def test_unix_socket_query_reaches_the_alembic_engine_without_double_escaping(
+    tmp_path: Path,
+) -> None:
+    socket_directory = tmp_path / "missing-postgres-socket"
+    environment = _postgres_environment(
+        environment_name="development",
+        port="5432",
+    )
+    environment["DATABASE_HOST"] = str(socket_directory)
+    environment[PROTECTED_TARGET_OPT_IN] = "true"
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "alembic", "current"],
+        cwd=BACKEND_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert str(socket_directory) in completed.stderr
+    assert f"%{socket_directory}" not in completed.stderr
+    assert "migration-password-must-not-leak" not in completed.stdout
+    assert "migration-password-must-not-leak" not in completed.stderr
+
+
 def test_explicit_opt_in_allows_offline_protected_target_without_connecting() -> None:
     environment = _postgres_environment(environment_name="development", port="5434")
     environment[PROTECTED_TARGET_OPT_IN] = "true"

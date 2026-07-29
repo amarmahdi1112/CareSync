@@ -177,6 +177,27 @@ class Settings(BaseSettings):
             path = (BACKEND_ROOT / path).resolve()
         return path
 
+    def _postgres_url(self, *, username: str, password: str) -> URL:
+        if self.database_host.startswith("/"):
+            return URL.create(
+                "postgresql+psycopg",
+                username=username,
+                password=password,
+                database=self.database_name,
+                query={
+                    "host": self.database_host,
+                    "port": str(self.database_port),
+                },
+            )
+        return URL.create(
+            "postgresql+psycopg",
+            username=username,
+            password=password,
+            host=self.database_host,
+            port=self.database_port,
+            database=self.database_name,
+        )
+
     @property
     def database_url(self) -> str | URL:
         if self.database_type == "sqlite":
@@ -184,13 +205,9 @@ class Settings(BaseSettings):
             path.parent.mkdir(parents=True, exist_ok=True)
             return f"sqlite:///{path}"
 
-        return URL.create(
-            "postgresql+psycopg",
+        return self._postgres_url(
             username=self.database_user,
             password=self.database_password.get_secret_value(),
-            host=self.database_host,
-            port=self.database_port,
-            database=self.database_name,
         )
 
     @property
@@ -202,13 +219,9 @@ class Settings(BaseSettings):
         password = self.transport_evidence_ingest_password.get_secret_value()
         if not password or password == self.database_password.get_secret_value():
             return None
-        return URL.create(
-            "postgresql+psycopg",
+        return self._postgres_url(
             username=self.transport_evidence_ingest_user,
             password=password,
-            host=self.database_host,
-            port=self.database_port,
-            database=self.database_name,
         )
 
     @property

@@ -37,6 +37,21 @@ def test_production_deploy_script_has_valid_bash_syntax() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_production_migration_uses_the_certified_local_postgres_socket() -> None:
+    source = _source()
+    mutation = source.index("\nmigration_started=1\n")
+    migration = source[
+        mutation : source.index("\nrunuser -u postgres -- psql", mutation)
+    ]
+
+    socket = migration.index("DATABASE_HOST=/var/run/postgresql")
+    port = migration.index("DATABASE_PORT=5432", socket)
+    database = migration.index("DATABASE_NAME=caresync", port)
+    upgrade = migration.index("upgrade 0043_org_wide_room_presence", database)
+
+    assert socket < port < database < upgrade
+
+
 def test_production_release_revision_matches_the_sole_alembic_head() -> None:
     config = Config(str(PROJECT_ROOT / "backend" / "alembic.ini"))
     config.set_main_option(
