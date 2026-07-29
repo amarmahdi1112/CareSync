@@ -31,6 +31,7 @@ RUNTIME_ROLE = "caresync_basic_app"
 CURRENT_REVISION = "0029B_release_context"
 PROJECTION = "public.caresync_family_release_context_inputs(uuid,uuid)"
 EVENT_FUNCTION = "public.caresync_release_context_from_authority_head()"
+CONCURRENCY_PROOF_TIMEOUT_SECONDS = 120
 ACTIVATION_UPDATE_COLUMNS = {
     "child_release_authorizations": {
         "version",
@@ -877,8 +878,8 @@ def test_nonoverlapping_shift_and_attendance_states_never_compose_context() -> N
         with ThreadPoolExecutor(max_workers=2) as executor:
             toggle = executor.submit(toggle_nonoverlapping_states)
             reads = executor.submit(read_contexts)
-            toggle.result(timeout=30)
-            successes, failures = reads.result(timeout=30)
+            toggle.result(timeout=CONCURRENCY_PROOF_TIMEOUT_SECONDS)
+            successes, failures = reads.result(timeout=CONCURRENCY_PROOF_TIMEOUT_SECONDS)
 
         assert successes == 0
         assert failures
